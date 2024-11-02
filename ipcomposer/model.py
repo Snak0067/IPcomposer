@@ -473,7 +473,7 @@ def get_object_localization_loss(
 
 
 class IpComposerModel(nn.Module):
-    def __init__(self, text_encoder, image_encoder, vae, unet, image_proj_model, adapter_modules, args):
+    def __init__(self, text_encoder, image_encoder, vae, unet, image_proj_model, adapter_modules, ip_image_encoder, args):
         super().__init__()
         self.text_encoder = text_encoder
         self.image_encoder = image_encoder
@@ -507,6 +507,7 @@ class IpComposerModel(nn.Module):
     # ************************ ip adapter code below ************************ #
         self.image_proj_model = image_proj_model
         self.adapter_modules = adapter_modules
+        self.ip_image_encoder = ip_image_encoder
         if args.pretrained_ip_adapter_path is not None:
             self.load_from_checkpoint(args.pretrained_ip_adapter_path)
             
@@ -658,7 +659,7 @@ class IpComposerModel(nn.Module):
         #ip-adapter
         image_proj_model = ImageProjModel(
             cross_attention_dim=unet.config.cross_attention_dim,
-            clip_embeddings_dim=image_encoder.config.projection_dim,
+            clip_embeddings_dim=ip_image_encoder.config.projection_dim,
             clip_extra_context_tokens=4,
         )
         # init adapter modules
@@ -715,6 +716,7 @@ class IpComposerModel(nn.Module):
         pipe.postfuse_module = self.postfuse_module
         pipe.image_proj_model = self.image_proj_model
         pipe.adapter_modules = self.adapter_modules
+        pipe.ip_image_encoder = self.ip_image_encoder
 
         return pipe
 
@@ -773,7 +775,7 @@ class IpComposerModel(nn.Module):
         # ip_adapter operation
         # TODO:加入ip-adapter的前向计算 global_image_feature
         with torch.no_grad():
-            image_embeds = self.image_encoder(batch["clip_images"].to(latents.device, dtype=vae_dtype)).image_embeds
+            image_embeds = self.ip_image_encoder(batch["clip_images"].to(latents.device, dtype=vae_dtype)).image_embeds
         image_embeds_ = []
         for image_embed, drop_image_embed in zip(image_embeds, batch["drop_image_embeds"]):
             if drop_image_embed == 1:
