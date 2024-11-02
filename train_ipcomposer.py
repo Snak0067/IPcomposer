@@ -32,7 +32,7 @@ from torchvision import transforms
 import time
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
-from fastcomposer.utils import parse_args
+from ipcomposer.utils import parse_args
 
 from ipcomposer.model import IpComposerModel
 
@@ -64,7 +64,7 @@ def train():
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
-        logging_dir=args.logging_dir,
+        project_dir=args.logging_dir,
     )
 
     # Handle the repository creation
@@ -146,7 +146,16 @@ def train():
     if args.train_text_encoder:
         model.text_encoder.requires_grad_(True)
         model.text_encoder.to(torch.float32)
-        
+    
+    if args.train_ip_adapter:
+        # 训练 ip_adapter 的 image_proj_model 参数
+        model.image_proj_model.requires_grad_(True) 
+        model.image_proj_model.to(torch.float32)
+        # 训练 ip_adapter 的 adapter_modules 参数
+        model.adapter_modules.parameters()   
+        model.adapter_modules.to(torch.float32)
+    
+    
     # 用于控制训练 image_encoder 中的部分层 
     if args.train_image_encoder:
         # image_encoder_trainable_layers = 2 则表明训练倒数两层
@@ -211,24 +220,21 @@ def train():
         [p for n, p in model.named_parameters() if p.requires_grad and "unet" not in n]
     )
     
-    ip_adapter_params = itertools.chain(
-        model.image_proj_model.parameters(),  # ip_adapter 的 image_proj_model 参数
-        model.adapter_modules.parameters()    # ip_adapter 的 adapter_modules 参数
-    )
+
     # 将 ip_adapter 参数加入到参数列表中
-    parameters = unet_params + other_params + list(ip_adapter_params)
+    parameters = unet_params + other_params
     
     # 对unet和其他模块的参数的学习率进行分别计算
     optimizer = optimizer_cls(
         [
             {"params": unet_params, "lr": args.learning_rate * args.unet_lr_scale},
             {"params": other_params, "lr": args.learning_rate},
-            {"params": ip_adapter_params, "lr": args.learning_rate},  # 为 ip_adapter 设置学习率
         ],
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
         eps=args.adam_epsilon,
     )
+
     # 对图像和分割图（segmentation map）同时进行处理
     train_transforms = get_train_transforms_with_segmap(args)
     # 数据增强和变换流程，并返回一个包含所有变换的序列
@@ -254,7 +260,7 @@ def train():
         object_appear_prob=args.object_appear_prob,
         uncondition_prob=args.uncondition_prob,
         text_only_prob=args.text_only_prob,
-        object_types=object_types,
+        object_types=None,  # 设置不带任何类别的条件过滤
         split="train",
         min_num_objects=args.min_num_objects,
         balance_num_objects=args.balance_num_objects,

@@ -507,8 +507,8 @@ class IpComposerModel(nn.Module):
     # ************************ ip adapter code below ************************ #
         self.image_proj_model = image_proj_model
         self.adapter_modules = adapter_modules
-        if args.ip_ckpt_path is not None:
-            self.load_from_checkpoint(args.ip_ckpt_path)
+        if args.pretrained_ip_adapter_path is not None:
+            self.load_from_checkpoint(args.pretrained_ip_adapter_path)
             
     def load_from_checkpoint(self, ckpt_path: str):
         # Calculate original checksums
@@ -653,6 +653,8 @@ class IpComposerModel(nn.Module):
             args.image_encoder_name_or_path,
         )
         
+        ip_image_encoder = CLIPVisionModelWithProjection.from_pretrained(args.image_encoder_path)
+        
         #ip-adapter
         image_proj_model = ImageProjModel(
             cross_attention_dim=unet.config.cross_attention_dim,
@@ -694,7 +696,7 @@ class IpComposerModel(nn.Module):
         unet.set_attn_processor(attn_procs)
         adapter_modules = torch.nn.ModuleList(unet.attn_processors.values())
         
-        return IpComposerModel(text_encoder, image_encoder, vae, unet, image_proj_model, adapter_modules, args)
+        return IpComposerModel(text_encoder, image_encoder, vae, unet, image_proj_model, adapter_modules, ip_image_encoder, args)
         
 
     def to_pipeline(self):
