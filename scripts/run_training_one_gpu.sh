@@ -18,7 +18,7 @@ accelerate launch \
     --mixed_precision=bf16 \
     --machine_rank 0 \
     --num_machines 1 \
-    --main_process_port 11135 \
+    --main_process_port 11145 \
     --num_processes ${num_processes} \
     train_ipcomposer.py \
     --pretrained_model_name_or_path ${FAMILY}/${MODEL} \

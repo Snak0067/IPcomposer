@@ -1,5 +1,6 @@
 # modified from https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py
 import torch
+import math
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -229,7 +230,6 @@ class AttnProcessor2_0(torch.nn.Module):
         *args,
         **kwargs,
     ):
-        import pdb;pdb.set_trace()
         residual = hidden_states
 
         if attn.spatial_norm is not None:
@@ -268,10 +268,7 @@ class AttnProcessor2_0(torch.nn.Module):
         query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        # 计算并存储文本注意力图
-        with torch.no_grad():
-            self.text_attn_map = query @ key.transpose(-2, -1).softmax(dim=-1)
+        
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1
         hidden_states = F.scaled_dot_product_attention(
@@ -348,9 +345,13 @@ class IPAttnProcessor2_0(torch.nn.Module):
         batch_size, sequence_length, _ = (
             hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
         )
-
+        ip_attention_mask = None
         if attention_mask is not None:
             attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+            
+            #  for get ip_adapter attention_probs
+            ip_attention_mask = attention_mask
+            
             # scaled_dot_product_attention expects attention_mask shape to be
             # (batch, heads, source_length, target_length)
             attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
@@ -374,6 +375,11 @@ class IPAttnProcessor2_0(torch.nn.Module):
 
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
+    
+        # 获取文本注意力分数并存储
+        ip_query = attn.head_to_batch_dim(query)
+        ip_key = attn.head_to_batch_dim(key)       
+        self.text_attention_probs = attn.get_attention_scores(ip_query, ip_key, ip_attention_mask)
 
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
@@ -382,10 +388,6 @@ class IPAttnProcessor2_0(torch.nn.Module):
         key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         
-        # 计算并存储文本注意力图
-        with torch.no_grad():
-            self.text_attn_map = query @ key.transpose(-2, -1).softmax(dim=-1)
-            print(f"calculate the text_attn_map for {self.text_attn_map.shape}")
         
         hidden_states = F.scaled_dot_product_attention(
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
@@ -405,11 +407,6 @@ class IPAttnProcessor2_0(torch.nn.Module):
 
         ip_key = ip_key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         ip_value = ip_value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        
-         # 计算并存储图像注意力图
-        with torch.no_grad():
-            self.image_attn_map = query @ ip_key.transpose(-2, -1).softmax(dim=-1)
-            print(f"calculate the text_attn_map for {self.image_attn_map.shape}")
         
         ip_hidden_states = F.scaled_dot_product_attention(
             query, ip_key, ip_value, attn_mask=None, dropout_p=0.0, is_causal=False

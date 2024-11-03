@@ -318,7 +318,7 @@ class IpComposerTextEncoder(CLIPPreTrainedModel):
         )
 
 
-def unet_store_cross_attention_scores(unet, attention_scores, layers=5, source_type="text"):
+def unet_store_cross_attention_scores(unet, attention_scores, layers=5):
     from diffusers.models.attention_processor import (
         Attention,
         AttnProcessor,
@@ -348,20 +348,16 @@ def unet_store_cross_attention_scores(unet, attention_scores, layers=5, source_t
         
         def new_get_attention_scores(module, query, key, attention_mask=None):
             attention_probs = module.old_get_attention_scores(query, key, attention_mask)
-            print(f"Intercepted attention in layer {name}")
+            
             # 针对 IPAttnProcessor，选择存储文本或图像的注意力图
             if isinstance(module.processor, IPAttnProcessor):
-                if source_type == "text" and hasattr(module.processor, "text_attn_map"):
-                    attention_scores[name] = module.processor.text_attn_map  # 存储文本注意力图
-                elif source_type == "image" and hasattr(module.processor, "image_attn_map"):
-                    attention_scores[name] = module.processor.image_attn_map  # 存储图像注意力图
+                attention_scores[name] = module.processor.text_attention_probs  # 存储文本注意力图
             elif isinstance(module.processor, AttnProcessor):
                 # 对于普通的 AttnProcessor，存储 standard attention map
                 attention_scores[name] = attention_probs
                 
             # 检查存储状态
-            print(f"Stored attention_scores[{name}] for {source_type}:", attention_scores.get(name, None))
-
+            print(f"Stored text_attention_scores[{name}] for:", attention_scores.get(name, None))
 
             return attention_probs
 
@@ -794,7 +790,6 @@ class IpComposerModel(nn.Module):
         image_embeds = torch.stack(image_embeds_)
         ip_tokens = self.image_proj_model(image_embeds)
         encoder_hidden_states = torch.cat([encoder_hidden_states, ip_tokens], dim=1)
-        import pdb;pdb.set_trace()
         # Predict the noise residual
         pred = self.unet(noisy_latents, timesteps, encoder_hidden_states).sample
         print("Cross-attention scores at this layer:", self.cross_attention_scores)
