@@ -347,17 +347,14 @@ def unet_store_cross_attention_scores(unet, attention_scores, layers=5):
     def make_new_get_attention_scores_fn(name):
         
         def new_get_attention_scores(module, query, key, attention_mask=None):
+
             attention_probs = module.old_get_attention_scores(query, key, attention_mask)
             
-            # 针对 IPAttnProcessor，选择存储文本或图像的注意力图
+            # get attention map
             if isinstance(module.processor, IPAttnProcessor):
-                attention_scores[name] = module.processor.text_attention_probs  # 存储文本注意力图
+                attention_scores[name] = attention_probs  
             elif isinstance(module.processor, AttnProcessor):
-                # 对于普通的 AttnProcessor，存储 standard attention map
                 attention_scores[name] = attention_probs
-                
-            # 检查存储状态
-            print(f"Stored text_attention_scores[{name}] for:", attention_scores.get(name, None))
 
             return attention_probs
 
@@ -368,12 +365,12 @@ def unet_store_cross_attention_scores(unet, attention_scores, layers=5):
         if isinstance(module, Attention) and "attn2" in name:
             if not any(layer in name for layer in applicable_layers):
                 continue
-             # 检查模块的处理器是否为 AttnProcessor2_0，并仅在它不是 IPAttnProcessor 时进行替换
+            
             if isinstance(module.processor, AttnProcessor2_0) and not isinstance(module.processor, IPAttnProcessor):
                 module.set_processor(AttnProcessor())
                 print(f"Set AttnProcessor for layer: {name}")
             elif isinstance(module.processor, IPAttnProcessor):
-                print(f"Using existing IPAttnProcessor for layer: {name}")
+                print(f"Set IPAttnProcessor for layer: {name}")
                 
             module.old_get_attention_scores = module.get_attention_scores
             module.get_attention_scores = types.MethodType(
@@ -792,8 +789,7 @@ class IpComposerModel(nn.Module):
         encoder_hidden_states = torch.cat([encoder_hidden_states, ip_tokens], dim=1)
         # Predict the noise residual
         pred = self.unet(noisy_latents, timesteps, encoder_hidden_states).sample
-        print("Cross-attention scores at this layer:", self.cross_attention_scores)
-
+        
         if self.mask_loss and torch.rand(1) < self.mask_loss_prob:
             object_segmaps = batch["object_segmaps"]
             mask = (object_segmaps.sum(dim=1) > 0).float()

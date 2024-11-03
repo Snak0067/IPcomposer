@@ -321,8 +321,6 @@ class IPAttnProcessor2_0(torch.nn.Module):
 
         self.to_k_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
         self.to_v_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
-        
-        self.text_attention_probs = None
 
     def __call__(
         self,
@@ -374,14 +372,15 @@ class IPAttnProcessor2_0(torch.nn.Module):
             )
             if attn.norm_cross:
                 encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-
+                
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
     
         # 获取文本注意力分数并存储
         ip_query = attn.head_to_batch_dim(query)
         ip_key = attn.head_to_batch_dim(key)       
-        self.text_attention_probs = attn.get_attention_scores(ip_query, ip_key, ip_attention_mask)
+        text_attention_probs = attn.get_attention_scores(ip_query, ip_key, ip_attention_mask)
+        del ip_query, ip_key, text_attention_probs, ip_attention_mask
 
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
