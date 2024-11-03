@@ -321,6 +321,8 @@ class IPAttnProcessor2_0(torch.nn.Module):
 
         self.to_k_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
         self.to_v_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
+        
+        self.text_attention_probs = None
 
     def __call__(
         self,
