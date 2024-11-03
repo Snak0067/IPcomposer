@@ -119,7 +119,6 @@ class IPAttnProcessor(nn.Module):
         **kwargs,
     ):
         residual = hidden_states
-
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
 
@@ -162,6 +161,7 @@ class IPAttnProcessor(nn.Module):
         # 获取文本注意力分数并存储
         attention_probs = attn.get_attention_scores(query, key, attention_mask)
         self.text_attn_map = attention_probs
+
         hidden_states = torch.bmm(attention_probs, value)
         hidden_states = attn.batch_to_head_dim(hidden_states)
         
@@ -169,8 +169,8 @@ class IPAttnProcessor(nn.Module):
         # for ip-adapter 
         """
         额外的注意力计算:
-            IPAttnProcessor 引入了 self.to_k_ip 和 self.to_v_ip，分别用于处理图像提示（image prompt）的 key 和 value 矩阵。
-            IPAttnProcessor 在标准跨注意力计算完后，单独为 ip_hidden_states 计算了新的 key、value 和 attention_probs，并使用这些值生成 ip_hidden_states，然后将其与标准 hidden_states 加权求和。
+            IPAttnProcessor 引入了 self.to_k_ip 和 self.to_v_ip, 分别用于处理图像提示（image prompt）的 key 和 value 矩阵。
+            IPAttnProcessor 在标准跨注意力计算完后, 单独为 ip_hidden_states 计算了新的 key、value 和 attention_probs, 并使用这些值生成 ip_hidden_states, 然后将其与标准 hidden_states 加权求和。
         """ 
         # 计算图像条件的注意力图
         ip_key = self.to_k_ip(ip_hidden_states)
@@ -186,7 +186,7 @@ class IPAttnProcessor(nn.Module):
         
         ip_hidden_states = torch.bmm(ip_attention_probs, ip_value)
         ip_hidden_states = attn.batch_to_head_dim(ip_hidden_states)
-        # self.scale，用于调整 ip_hidden_states 的权重
+        # self.scale, 用于调整 ip_hidden_states 的权重
         hidden_states = hidden_states + self.scale * ip_hidden_states
 
         # linear proj
@@ -229,13 +229,13 @@ class AttnProcessor2_0(torch.nn.Module):
         *args,
         **kwargs,
     ):
+        import pdb;pdb.set_trace()
         residual = hidden_states
 
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
 
         input_ndim = hidden_states.ndim
-
         if input_ndim == 4:
             batch_size, channel, height, width = hidden_states.shape
             hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
@@ -265,12 +265,13 @@ class AttnProcessor2_0(torch.nn.Module):
 
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
-
         query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
         key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
 
+        # 计算并存储文本注意力图
+        with torch.no_grad():
+            self.text_attn_map = query @ key.transpose(-2, -1).softmax(dim=-1)
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1
         hidden_states = F.scaled_dot_product_attention(
@@ -335,7 +336,6 @@ class IPAttnProcessor2_0(torch.nn.Module):
         **kwargs,
     ):
         residual = hidden_states
-
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
 
@@ -379,9 +379,12 @@ class IPAttnProcessor2_0(torch.nn.Module):
         head_dim = inner_dim // attn.heads
 
         query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
         key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        
+        # 计算并存储文本注意力图
+        with torch.no_grad():
+            self.text_attn_map = query @ key.transpose(-2, -1).softmax(dim=-1)
 
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1
@@ -401,6 +404,11 @@ class IPAttnProcessor2_0(torch.nn.Module):
 
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1
+        
+         # 计算并存储图像注意力图
+        with torch.no_grad():
+            self.image_attn_map = query @ ip_key.transpose(-2, -1).softmax(dim=-1)
+        
         ip_hidden_states = F.scaled_dot_product_attention(
             query, ip_key, ip_value, attn_mask=None, dropout_p=0.0, is_causal=False
         )

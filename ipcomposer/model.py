@@ -340,15 +340,15 @@ def unet_store_cross_attention_scores(unet, attention_scores, layers=5, source_t
         "up_blocks.2",
         "up_blocks.3",
     ]
-
     start_layer = (len(UNET_LAYER_NAMES) - layers) // 2
     end_layer = start_layer + layers
     applicable_layers = UNET_LAYER_NAMES[start_layer:end_layer]
 
     def make_new_get_attention_scores_fn(name):
+        
         def new_get_attention_scores(module, query, key, attention_mask=None):
             attention_probs = module.old_get_attention_scores(query, key, attention_mask)
-            
+            print(f"Intercepted attention in layer {name}")
             # 针对 IPAttnProcessor，选择存储文本或图像的注意力图
             if isinstance(module.processor, IPAttnProcessor):
                 if source_type == "text" and hasattr(module.processor, "text_attn_map"):
@@ -358,6 +358,11 @@ def unet_store_cross_attention_scores(unet, attention_scores, layers=5, source_t
             elif isinstance(module.processor, AttnProcessor):
                 # 对于普通的 AttnProcessor，存储 standard attention map
                 attention_scores[name] = attention_probs
+                
+            # 检查存储状态
+            print(f"Stored attention_scores[{name}] for {source_type}:", attention_scores.get(name, None))
+
+
             return attention_probs
 
         return new_get_attention_scores
@@ -366,12 +371,14 @@ def unet_store_cross_attention_scores(unet, attention_scores, layers=5, source_t
         # 如果模块是 Attention 实例并且名称包含 "attn2"（通常表示交叉注意力层）
         if isinstance(module, Attention) and "attn2" in name:
             if not any(layer in name for layer in applicable_layers):
-                # 如果模块不属于 applicable_layers，则跳过
                 continue
-            # 检查模块的处理器是否为 AttnProcessor，而非 IPAttnProcessor
-            # 只从非Ip-adapter的交叉注意力层中获取 注意力分数——CrossAttnMaps
-            if isinstance(module.processor, AttnProcessor2_0):
+             # 检查模块的处理器是否为 AttnProcessor2_0，并仅在它不是 IPAttnProcessor 时进行替换
+            if isinstance(module.processor, AttnProcessor2_0) and not isinstance(module.processor, IPAttnProcessor):
                 module.set_processor(AttnProcessor())
+                print(f"Set AttnProcessor for layer: {name}")
+            elif isinstance(module.processor, IPAttnProcessor):
+                print(f"Using existing IPAttnProcessor for layer: {name}")
+                
             module.old_get_attention_scores = module.get_attention_scores
             module.get_attention_scores = types.MethodType(
                 make_new_get_attention_scores_fn(name), module
@@ -775,8 +782,7 @@ class IpComposerModel(nn.Module):
                 f"Unknown prediction type {noise_scheduler.config.prediction_type}"
             )
         
-        # ip_adapter operation
-        # TODO:加入ip-adapter的前向计算 global_image_feature
+        # TODO: ip_adapter operation 加入ip-adapter的前向计算 global_image_feature
         with torch.no_grad():
             image_embeds = self.ip_image_encoder(batch["clip_images"].to(latents.device, dtype=vae_dtype)).image_embeds
         image_embeds_ = []
@@ -788,9 +794,10 @@ class IpComposerModel(nn.Module):
         image_embeds = torch.stack(image_embeds_)
         ip_tokens = self.image_proj_model(image_embeds)
         encoder_hidden_states = torch.cat([encoder_hidden_states, ip_tokens], dim=1)
-        
+        import pdb;pdb.set_trace()
         # Predict the noise residual
         pred = self.unet(noisy_latents, timesteps, encoder_hidden_states).sample
+        print("Cross-attention scores at this layer:", self.cross_attention_scores)
 
         if self.mask_loss and torch.rand(1) < self.mask_loss_prob:
             object_segmaps = batch["object_segmaps"]

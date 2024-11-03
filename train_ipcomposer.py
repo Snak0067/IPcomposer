@@ -155,7 +155,6 @@ def train():
         model.adapter_modules.requires_grad_(True) 
         model.adapter_modules.to(torch.float32)
     
-    
     # 用于控制训练 image_encoder 中的部分层 
     if args.train_image_encoder:
         # image_encoder_trainable_layers = 2 则表明训练倒数两层
