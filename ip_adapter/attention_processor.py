@@ -385,29 +385,31 @@ class IPAttnProcessor2_0(torch.nn.Module):
         # 计算并存储文本注意力图
         with torch.no_grad():
             self.text_attn_map = query @ key.transpose(-2, -1).softmax(dim=-1)
-
-        # the output of sdp = (batch, num_heads, seq_len, head_dim)
-        # TODO: add support for attn.scale when we move to Torch 2.1
+            print(f"calculate the text_attn_map for {self.text_attn_map.shape}")
+        
         hidden_states = F.scaled_dot_product_attention(
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
         )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
-
+        
+        """
+        额外的注意力计算:
+            IPAttnProcessor 引入了 self.to_k_ip 和 self.to_v_ip, 分别用于处理图像提示（image prompt）的 key 和 value 矩阵。
+            IPAttnProcessor 在标准跨注意力计算完后, 单独为 ip_hidden_states 计算了新的 key、value 和 attention_probs, 并使用这些值生成 ip_hidden_states, 然后将其与标准 hidden_states 加权求和。
+        """ 
         # for ip-adapter
         ip_key = self.to_k_ip(ip_hidden_states)
         ip_value = self.to_v_ip(ip_hidden_states)
 
         ip_key = ip_key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         ip_value = ip_value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        # the output of sdp = (batch, num_heads, seq_len, head_dim)
-        # TODO: add support for attn.scale when we move to Torch 2.1
         
          # 计算并存储图像注意力图
         with torch.no_grad():
             self.image_attn_map = query @ ip_key.transpose(-2, -1).softmax(dim=-1)
+            print(f"calculate the text_attn_map for {self.image_attn_map.shape}")
         
         ip_hidden_states = F.scaled_dot_product_attention(
             query, ip_key, ip_value, attn_mask=None, dropout_p=0.0, is_causal=False
