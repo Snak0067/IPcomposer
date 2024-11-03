@@ -1,6 +1,6 @@
 export WANDB_NAME=ipcomposer-localize-lvis-1_5-1e-5
 export WANDB_DISABLE_SERVICE=true
-num_processes=1
+num_processes=2
 # export CUDA_VISIBLE_DEVICES=1,2,3,4,5,6,7
 export CUDA_VISIBLE_DEVICES=0,1
 
