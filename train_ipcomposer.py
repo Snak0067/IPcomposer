@@ -152,7 +152,7 @@ def train():
         model.image_proj_model.requires_grad_(True) 
         model.image_proj_model.to(torch.float32)
         # 训练 ip_adapter 的 adapter_modules 参数
-        model.adapter_modules.parameters()   
+        model.adapter_modules.requires_grad_(True) 
         model.adapter_modules.to(torch.float32)
     
     

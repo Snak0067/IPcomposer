@@ -56,5 +56,6 @@ accelerate launch \
     --object_localization_weight 1e-3 \
     --object_localization_loss balanced_l1 \
     --resume_from_checkpoint latest \
-    --report_to wandb \
-    --train_ip_adapter
+    --image_encoder_path ${IMAGE_ENCODER} \
+    --train_ip_adapter 
+    # --report_to wandb # 本地调试先不用连通wandb

@@ -681,6 +681,13 @@ def parse_args(default=False):
         "--train_ip_adapter",
         action="store_true",
     )
+    parser.add_argument(
+        "--image_encoder_path",
+        type=str,
+        default=None,
+        required=True,
+        help="Path to CLIP image encoder",
+    )
 
     if default:
         return parser.parse_args([])

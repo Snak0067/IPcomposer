@@ -493,7 +493,8 @@ class IpComposerModel(nn.Module):
         embed_dim = text_encoder.config.hidden_size
         # self.postfuse_module: 一个用于融合文本和图像嵌入的模块
         self.postfuse_module = IpComposerPostfuseModule(embed_dim)
-
+        
+        # TODO:cross_attention_scores目前数量为0，取不出来
         if self.object_localization:
             self.cross_attention_scores = {}
             self.unet = unet_store_cross_attention_scores(
