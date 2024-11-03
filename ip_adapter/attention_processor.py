@@ -103,6 +103,10 @@ class IPAttnProcessor(nn.Module):
 
         self.to_k_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
         self.to_v_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
+        
+        # 区分标准注意力图和图像注意力图
+        # self.text_attn_map = None
+        # self.image_attn_map = None
 
     def __call__(
         self,
@@ -155,9 +159,12 @@ class IPAttnProcessor(nn.Module):
         key = attn.head_to_batch_dim(key)
         value = attn.head_to_batch_dim(value)
 
+        # 获取文本注意力分数并存储
         attention_probs = attn.get_attention_scores(query, key, attention_mask)
+        self.text_attn_map = attention_probs
         hidden_states = torch.bmm(attention_probs, value)
         hidden_states = attn.batch_to_head_dim(hidden_states)
+        
 
         # for ip-adapter 
         """
@@ -165,6 +172,7 @@ class IPAttnProcessor(nn.Module):
             IPAttnProcessor 引入了 self.to_k_ip 和 self.to_v_ip，分别用于处理图像提示（image prompt）的 key 和 value 矩阵。
             IPAttnProcessor 在标准跨注意力计算完后，单独为 ip_hidden_states 计算了新的 key、value 和 attention_probs，并使用这些值生成 ip_hidden_states，然后将其与标准 hidden_states 加权求和。
         """ 
+        # 计算图像条件的注意力图
         ip_key = self.to_k_ip(ip_hidden_states)
         ip_value = self.to_v_ip(ip_hidden_states)
 
@@ -172,7 +180,10 @@ class IPAttnProcessor(nn.Module):
         ip_value = attn.head_to_batch_dim(ip_value)
 
         ip_attention_probs = attn.get_attention_scores(query, ip_key, None)
+        # 存储图像注意力图
         self.attn_map = ip_attention_probs
+        self.image_attn_map = ip_attention_probs
+        
         ip_hidden_states = torch.bmm(ip_attention_probs, ip_value)
         ip_hidden_states = attn.batch_to_head_dim(ip_hidden_states)
         # self.scale，用于调整 ip_hidden_states 的权重

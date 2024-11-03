@@ -318,7 +318,7 @@ class IpComposerTextEncoder(CLIPPreTrainedModel):
         )
 
 
-def unet_store_cross_attention_scores(unet, attention_scores, layers=5):
+def unet_store_cross_attention_scores(unet, attention_scores, layers=5, source_type="text"):
     from diffusers.models.attention_processor import (
         Attention,
         AttnProcessor,
@@ -346,14 +346,17 @@ def unet_store_cross_attention_scores(unet, attention_scores, layers=5):
     applicable_layers = UNET_LAYER_NAMES[start_layer:end_layer]
 
     def make_new_get_attention_scores_fn(name):
-        # 调用 module.old_get_attention_scores 计算注意力分数 attention_probs。
-        # 将 attention_probs 存储到 attention_scores 字典中，以 name（即模块的名称）为键。
         def new_get_attention_scores(module, query, key, attention_mask=None):
-            attention_probs = module.old_get_attention_scores(
-                query, key, attention_mask
-            )
-            # 只记录原始 AttnProcessor 的注意力分数
-            if isinstance(module.processor, AttnProcessor):
+            attention_probs = module.old_get_attention_scores(query, key, attention_mask)
+            
+            # 针对 IPAttnProcessor，选择存储文本或图像的注意力图
+            if isinstance(module.processor, IPAttnProcessor):
+                if source_type == "text" and hasattr(module.processor, "text_attn_map"):
+                    attention_scores[name] = module.processor.text_attn_map  # 存储文本注意力图
+                elif source_type == "image" and hasattr(module.processor, "image_attn_map"):
+                    attention_scores[name] = module.processor.image_attn_map  # 存储图像注意力图
+            elif isinstance(module.processor, AttnProcessor):
+                # 对于普通的 AttnProcessor，存储 standard attention map
                 attention_scores[name] = attention_probs
             return attention_probs
 
@@ -369,11 +372,10 @@ def unet_store_cross_attention_scores(unet, attention_scores, layers=5):
             # 只从非Ip-adapter的交叉注意力层中获取 注意力分数——CrossAttnMaps
             if isinstance(module.processor, AttnProcessor2_0):
                 module.set_processor(AttnProcessor())
-            elif not isinstance(module.processor, IPAttnProcessor):
-                module.old_get_attention_scores = module.get_attention_scores
-                module.get_attention_scores = types.MethodType(
-                    make_new_get_attention_scores_fn(name), module
-                )
+            module.old_get_attention_scores = module.get_attention_scores
+            module.get_attention_scores = types.MethodType(
+                make_new_get_attention_scores_fn(name), module
+            )
 
     return unet
 
