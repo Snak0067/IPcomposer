@@ -1,13 +1,13 @@
 export WANDB_NAME=ipcomposer-localize-lvis-1_5-1e-5
 export WANDB_DISABLE_SERVICE=true
-num_processes=2
-# export CUDA_VISIBLE_DEVICES=1,2,3,4,5,6,7
-export CUDA_VISIBLE_DEVICES=0,1
+num_processes=4
+export CUDA_VISIBLE_DEVICES=4,5,6,7
+# export CUDA_VISIBLE_DEVICES=0,1
 
 FFHQ_DATAPATH=/home/capg_bind/96/mww/datasets/ffhq_wild_files
 LVIS_DATAPATH=/home/capg_bind/97/zfd/diffusion/ZFD_Huawei/rare_178_v1.0
 
-DATASET_PATH=${FFHQ_DATAPATH}
+DATASET_PATH=${LVIS_DATAPATH}
 
 DATASET_NAME="ffhq"
 FAMILY=/home/capg_bind/96/zfd/0.hug/runwayml/
@@ -57,5 +57,5 @@ accelerate launch \
     --object_localization_loss balanced_l1 \
     --resume_from_checkpoint latest \
     --image_encoder_path ${IMAGE_ENCODER} \
-    --train_ip_adapter 
-    # --report_to wandb # 本地调试先不用连通wandb
+    --train_ip_adapter \
+    --report_to wandb # 本地调试先不用连通wandb
