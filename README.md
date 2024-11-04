@@ -12,6 +12,13 @@ pip install transformers==4.25.1 accelerate datasets evaluate diffusers==0.16.1 
 python setup.py install
 ```
 
+162上面的环境
+```
+conda activate fastcom
+cd /home/capg_bind/96/mxf/workgroup/huawei-chanllenge/IPcomposer
+bash scripts/run_training.sh
+```
+
 ### <font style="color:rgb(31, 35, 40);">Download the Pre-trained Models</font>
 总体保存的路径在
 
