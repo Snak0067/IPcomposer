@@ -42,10 +42,12 @@ def main():
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
 
+    # 加载和配置生成管道
     pipe = StableDiffusionPipeline.from_pretrained(
         args.pretrained_model_name_or_path, torch_dtype=weight_dtype
     )
 
+    # 加载和配置 FastComposerModel
     model = FastComposerModel.from_pretrained(args)
 
     ckpt_name = "pytorch_model.bin"

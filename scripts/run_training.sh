@@ -1,15 +1,14 @@
 export WANDB_NAME=ipcomposer-localize-lvis-1_5-1e-5
 export WANDB_DISABLE_SERVICE=true
-num_processes=4
-export CUDA_VISIBLE_DEVICES=4,5,6,7
-# export CUDA_VISIBLE_DEVICES=0,1
+export CUDA_VISIBLE_DEVICES=2,3,4
 
 FFHQ_DATAPATH=/home/capg_bind/96/mww/datasets/ffhq_wild_files
-LVIS_DATAPATH=/home/capg_bind/97/zfd/diffusion/ZFD_Huawei/rare_178_v1.0
+LVIS_178_DATAPATH=/home/capg_bind/97/zfd/diffusion/ZFD_Huawei/rare_v3.0
+LIVS_337_DATAPATH=/home/capg_bind/97/zfd/diffusion/ZFD_Huawei/rare_all_v1.0
 
-DATASET_PATH=${LVIS_DATAPATH}
+DATASET_PATH=${LIVS_337_DATAPATH}
+DATASET_NAME="lvis_337"
 
-DATASET_NAME="ffhq"
 FAMILY=/home/capg_bind/96/zfd/0.hug/runwayml/
 MODEL=stable-diffusion-v1-5
 IMAGE_ENCODER=/home/capg_bind/96/zfd/0.hug/openai/clip-vit-large-patch14
@@ -18,17 +17,17 @@ accelerate launch \
     --mixed_precision=bf16 \
     --machine_rank 0 \
     --num_machines 1 \
-    --main_process_port 11135 \
-    --num_processes ${num_processes} \
+    --main_process_port 11335 \
+    --num_processes 3 \
     --multi_gpu \
     train_ipcomposer.py \
     --pretrained_model_name_or_path ${FAMILY}/${MODEL} \
     --dataset_name ${DATASET_PATH} \
-    --logging_dir logs/${MODEL}/${DATASET_NAME}/${WANDB_NAME} \
-    --output_dir outputs/${MODEL}/${DATASET_NAME}/${WANDB_NAME} \
-    --max_train_steps 150000 \
-    --num_train_epochs 150000 \
-    --train_batch_size 16 \
+    --logging_dir logs/${DATASET_NAME}/${WANDB_NAME} \
+    --output_dir outputs/${DATASET_NAME}/${WANDB_NAME} \
+    --max_train_steps 20000 \
+    --num_train_epochs 250 \
+    --train_batch_size 12 \
     --learning_rate 1e-5 \
     --unet_lr_scale 1.0 \
     --checkpointing_steps 200 \

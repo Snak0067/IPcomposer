@@ -512,9 +512,9 @@ class IpComposerModel(nn.Module):
         self.adapter_modules = adapter_modules
         self.ip_image_encoder = ip_image_encoder
         if args.pretrained_ip_adapter_path is not None:
-            self.load_from_checkpoint(args.pretrained_ip_adapter_path)
+            self.load_ip_adapter_from_checkpoint(args.pretrained_ip_adapter_path)
             
-    def load_from_checkpoint(self, ckpt_path: str):
+    def load_ip_adapter_from_checkpoint(self, ckpt_path: str):
         # Calculate original checksums
         orig_ip_proj_sum = torch.sum(torch.stack([torch.sum(p) for p in self.image_proj_model.parameters()]))
         orig_adapter_sum = torch.sum(torch.stack([torch.sum(p) for p in self.adapter_modules.parameters()]))

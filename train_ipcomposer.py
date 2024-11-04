@@ -56,6 +56,27 @@ import itertools
 
 logger = get_logger(__name__)
 
+os.environ["WANDB_MODE"]="offline"
+
+def save_ipadapter_checkpoint(model, global_step, output_dir, accelerator):
+    """
+    Save the model checkpoint.
+    """
+    if accelerator.is_main_process:
+        save_path = os.path.join(output_dir, f"checkpoint-{global_step}_ip_adapter.bin")
+        state_dict = accelerator.get_state_dict(model)
+
+        # Separate the state dict into different components
+        image_proj_sd = {}
+        ip_sd = {}
+        for k in state_dict:
+            if k.startswith("image_proj_model"):
+                image_proj_sd[k.replace("image_proj_model.", "")] = state_dict[k]
+            elif k.startswith("adapter_modules"):
+                ip_sd[k.replace("adapter_modules.", "")] = state_dict[k]
+        
+        torch.save({"image_proj": image_proj_sd, "ip_adapter": ip_sd}, save_path)
+        print(f"ip-adapter model saved at {save_path}")
 
 def train():
     args = parse_args()
@@ -66,6 +87,7 @@ def train():
         log_with=args.report_to,
         project_dir=args.logging_dir,
     )
+    print(f"Process rank: {accelerator.process_index}, using device: {accelerator.device}")
 
     # Handle the repository creation
     if accelerator.is_main_process:
@@ -91,7 +113,12 @@ def train():
         if accelerator.is_main_process
         else [],
     )
-
+    # 用于写入loss损失，防止wandb不能连接 损失消失
+    loss_log_path = os.path.join(args.logging_dir, f"{str_m_d_y_h_m_s}_loss_log.txt")
+    if accelerator.is_main_process:
+        with open(loss_log_path, "a") as loss_log_file:
+            loss_log_file.write("Step\tTrain Loss\tDenoise Loss\tLocalization Loss\n")
+    
     logger.info(accelerator.state, main_process_only=False)
     if accelerator.is_local_main_process:
         datasets.utils.logging.set_verbosity_warning()
@@ -304,7 +331,7 @@ def train():
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        accelerator.init_trackers("FastComposer", config=vars(args))
+        accelerator.init_trackers("IpComposer", config=vars(args))
 
     # Train!
     for name, param in model.named_parameters():
@@ -423,6 +450,14 @@ def train():
                     },
                     step=global_step,
                 )
+                
+                # 写入损失到文本文件
+                if accelerator.is_main_process:
+                    with open(loss_log_path, "a") as loss_log_file:
+                        loss_log_file.write(
+                            f"{global_step}\t{train_loss:.6f}\t{denoise_loss:.6f}\t{localization_loss:.6f}\n"
+                        )
+    
                 train_loss = 0.0
                 denoise_loss = 0.0
                 localization_loss = 0.0
@@ -435,6 +470,7 @@ def train():
                         args.output_dir, f"checkpoint-{global_step}"
                     )
                     accelerator.save_state(save_path)
+                    save_ipadapter_checkpoint(model, global_step, args.output_dir, accelerator)
                     logger.info(f"Saved state to {save_path}")
                     if args.keep_only_last_checkpoint:
                         # Remove all other checkpoints
