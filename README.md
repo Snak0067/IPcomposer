@@ -1,72 +1,67 @@
-IP-Adapter and FastComposer Integration: Technical Overview
+## Abstract
+此存储库展示了IPComposer 新的模型框架结构，旨在充分利用两种方法的优势，实现精确的图像生成以及丰富的文本和视觉条件。我们聚焦于两个分支，一个分支提供额外的交叉注意力层基于参考图像为图像生成提供全局的信息指导，另一个分支聚焦于优化的文本嵌入和实例图像的组合，提供局部的实例级别的信息指导，共同实现强化语义和强化图像指引的可控图像生成
 
-Introduction
+## Usage
+### <font style="color:rgb(31, 35, 40);">Environment Setup</font>
+```python
+conda create -n ipcomposer python
+conda activate ipcomposer
+pip install torch torchvision torchaudio
+pip install transformers==4.25.1 accelerate datasets evaluate diffusers==0.16.1 xformers triton scipy clip gradio facenet-pytorch
 
-This repository presents an advanced integration of IP-Adapter and FastComposer, two powerful models that enhance image generation and manipulation through adaptive and compositional strategies. The combined architecture is designed to leverage the strengths of both methods, enabling precise image generation with enriched textual and visual conditioning.
+python setup.py install
+```
 
-Key Components
+### <font style="color:rgb(31, 35, 40);">Download the Pre-trained Models</font>
+总体保存的路径在
 
-1. IP-Adapter
+```python
+96/mxf/workgroup/huawei-chanllenge/IPcomposer/outputs
+```
 
-IP-Adapter introduces a novel mechanism for injecting image prompts into generative models. This technique involves projecting image embeddings into the cross-attention layers of a UNet to steer the generation process. The core components include:
+LVIS_178 这个数据集包含 985 张图像，训练结果保存在
 
-Image Projection Module: Projects image embeddings into a space compatible with cross-attention.
+```python
+96/mxf/workgroup/huawei-chanllenge/IPcomposer/outputs/lvis_178
+```
 
-Custom Cross-Attention Mechanism: Extends conventional attention by integrating learned keys and values from image prompts, allowing for controlled image synthesis.
+LVIS_337 这个数据集包含 1462 张图像，训练结果保存在
 
-2. FastComposer
+```python
+96/mxf/workgroup/huawei-chanllenge/IPcomposer/outputs/lvis_337
+```
 
-FastComposer is designed for subject-driven image generation using multimodal inputs. It incorporates:
+### Inference
+```python
+bash scripts/run_inference.sh
+```
 
-Text-Image Fusion: Combines embeddings from a CLIP-based text encoder and image encoder to enhance the generative model's comprehension.
+### <font style="color:rgb(31, 35, 40);">Training</font>
+<font style="color:rgb(31, 35, 40);">Prepare the LVIS（fast composer-type dataset）training data:</font>
 
-Post-Fuse Module: A module that processes fused embeddings for richer semantic understanding.
+```python
+FFHQ_DATAPATH=/home/capg_bind/96/mww/datasets/ffhq_wild_files
+LVIS_178_DATAPATH=/home/capg_bind/97/zfd/diffusion/ZFD_Huawei/rare_v3.0
+LIVS_337_DATAPATH=/home/capg_bind/97/zfd/diffusion/ZFD_Huawei/rare_all_v1.0
+```
 
-Object Localization and Attention: Monitors cross-attention maps to address potential issues such as identity blending in multi-subject scenarios.
+<font style="color:rgb(31, 35, 40);">Run training:</font>
 
-Integration Details
+<font style="color:rgb(31, 35, 40);">单卡训练：</font>
 
-Architectural Synergy
+```python
+bash scripts/run_training_one_gpu.sh
+```
 
-By integrating IP-Adapter with FastComposer, this repository achieves a model capable of:
+<font style="color:rgb(31, 35, 40);">多卡训练</font>
 
-Utilizing IP-Adapter's image embeddings to inform generation with specific visual cues.
+```python
+bash scripts/run_training.sh
+```
 
-Harnessing FastComposer's ability to condition the output on complex text-image relationships.
-
-Maintaining attention regularization through FastComposer’s object localization methods to ensure clarity and distinctness in outputs.
-
-Training Strategy
-
-The training process involves:
-
-Cross-Attention Regularization: Enhanced by the IP-Adapter's injected image tokens to guide the generative attention process.
-
-Joint Parameter Optimization: Parameters for the image projection module, adapter modules, and the combined model components (UNet, text/image encoders) are fine-tuned collaboratively to achieve optimal performance.
-
-Gradient Checkpointing: Applied selectively to reduce memory footprint during training, facilitating the use of larger models.
-
-Loss Functions
-
-The loss functions used include:
-
-Denoising Loss: A standard MSE loss for noise prediction.
-
-Localization Loss: A balanced L1 loss that ensures accurate alignment between attention maps and segmentation masks, preventing identity blending and improving subject-specific generation.
-
-Mask Loss (Optional): Applied to specific training steps to enhance subject region focus.
-
-Applications
-
-This integrated approach is suitable for tasks requiring:
-
-Precise subject conditioning: Where generated outputs must reflect particular subjects or object details from input data.
-
-Controlled compositional generation: Leveraging both text and image inputs for scenarios like personalized art generation, context-specific image synthesis, and story visualization.
-
-Conclusion
-
-The combination of IP-Adapter and FastComposer results in a powerful, flexible model capable of sophisticated image generation conditioned on detailed text and image prompts. This architecture offers robust solutions for applications requiring high fidelity, precise control, and multi-subject coherence.
-
-Explore the code and detailed documentation within this repository to experiment with or extend the model for your specific use cases.
+## TODOs
+- [ ] 337 数据集上面存在格式问题
+- [ ] 1203 全类上面的训练
+- [ ] 基于保存的 unet、ipadapter 权重去推理完成正确性验证
+- [ ] 分阶段训练、联合训练训练策略的消融实验测评
 

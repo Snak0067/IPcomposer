@@ -6,8 +6,8 @@ FFHQ_DATAPATH=/home/capg_bind/96/mww/datasets/ffhq_wild_files
 LVIS_178_DATAPATH=/home/capg_bind/97/zfd/diffusion/ZFD_Huawei/rare_v3.0
 LIVS_337_DATAPATH=/home/capg_bind/97/zfd/diffusion/ZFD_Huawei/rare_all_v1.0
 
-DATASET_PATH=${LIVS_337_DATAPATH}
-DATASET_NAME="lvis_337"
+DATASET_PATH=${LVIS_178_DATAPATH}
+DATASET_NAME="lvis_178"
 
 FAMILY=/home/capg_bind/96/zfd/0.hug/runwayml/
 MODEL=stable-diffusion-v1-5
@@ -17,7 +17,7 @@ accelerate launch \
     --mixed_precision=bf16 \
     --machine_rank 0 \
     --num_machines 1 \
-    --main_process_port 11335 \
+    --main_process_port 11235 \
     --num_processes 3 \
     --multi_gpu \
     train_ipcomposer.py \
