@@ -356,6 +356,8 @@ class IpComposerDataset(torch.utils.data.Dataset):
         for segment in segments:
             id = segment["id"]
             bbox = segment["bbox"]  # [h1, w1, h2, w2]
+            # 检查并将 bbox 的元素转换为整数
+            bbox = [int(coord) if not isinstance(coord, int) else coord for coord in bbox]
             
             # 基于bbox提取图像 image指定 ID 的对象区域, 并用背景 background 替换掉其他部分
             object_image = self.object_processor(
