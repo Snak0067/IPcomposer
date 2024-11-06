@@ -53,10 +53,15 @@ else:
     from ip_adapter.attention_processor import IPAttnProcessor, AttnProcessor
 
 import itertools
+import torch.multiprocessing as mp
 
 logger = get_logger(__name__)
 
+# 设置可见设备
+os.environ["CUDA_VISIBLE_DEVICES"] = "1,2,3,4,5,6"
 os.environ["WANDB_MODE"]="offline"
+
+mp.set_start_method("spawn", force=True)
 
 def save_ipadapter_checkpoint(model, global_step, output_dir, accelerator):
     """
@@ -292,7 +297,7 @@ def train():
         balance_num_objects=args.balance_num_objects,
     )
 
-    train_dataloader = get_data_loader(train_dataset, args.train_batch_size, num_workers=16)
+    train_dataloader = get_data_loader(train_dataset, args.train_batch_size, num_workers=4)
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
