@@ -1,6 +1,6 @@
 export WANDB_NAME=ipcomposer-localize-lvis-1_5-1e-5
 export WANDB_DISABLE_SERVICE=true
-CUDA_VISIBLE_DEVICES=1,2,3,4,5
+CUDA_VISIBLE_DEVICES=1,2,5,6
 
 FFHQ_DATAPATH=/home/capg_bind/96/mww/datasets/ffhq_wild_files
 LVIS_178_DATAPATH=/home/capg_bind/97/zfd/diffusion/ZFD_Huawei/rare_v3.0
@@ -22,7 +22,7 @@ accelerate launch \
     --machine_rank 0 \
     --num_machines 1 \
     --main_process_port 11135 \
-    --num_processes 5 \
+    --num_processes 4 \
     --multi_gpu \
     train_ipcomposer.py \
     --pretrained_model_name_or_path ${FAMILY}/${MODEL} \
@@ -31,7 +31,7 @@ accelerate launch \
     --output_dir outputs/${DATASET_NAME}/${WANDB_NAME} \
     --max_train_steps 50000 \
     --num_train_epochs 250 \
-    --train_batch_size 20 \
+    --train_batch_size 2 \
     --learning_rate 1e-5 \
     --unet_lr_scale 1.0 \
     --checkpointing_steps 500 \
