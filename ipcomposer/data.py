@@ -490,6 +490,7 @@ def get_data_loader(dataset, batch_size, num_workers, shuffle=True):
         collate_fn=collate_fn,
         batch_size=batch_size,
         num_workers=num_workers,
+        pin_memory=True
     )
 
     return dataloader
