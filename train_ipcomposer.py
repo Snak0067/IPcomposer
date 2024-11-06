@@ -76,7 +76,7 @@ def save_ipadapter_checkpoint(model, global_step, output_dir, accelerator):
                 ip_sd[k.replace("adapter_modules.", "")] = state_dict[k]
         
         torch.save({"image_proj": image_proj_sd, "ip_adapter": ip_sd}, save_path)
-        logger.info(f"ip-adapter model saved at {save_path}")
+        print(f"ip-adapter model saved at {save_path}")
 
 def train():
     args = parse_args()
@@ -87,7 +87,7 @@ def train():
         log_with=args.report_to,
         project_dir=args.logging_dir,
     )
-    logger.info(f"Process rank: {accelerator.process_index}, using device: {accelerator.device}")
+    print(f"Process rank: {accelerator.process_index}, using device: {accelerator.device}")
 
     # Handle the repository creation
     if accelerator.is_main_process:
@@ -292,7 +292,7 @@ def train():
         balance_num_objects=args.balance_num_objects,
     )
 
-    train_dataloader = get_data_loader(train_dataset, args.train_batch_size)
+    train_dataloader = get_data_loader(train_dataset, args.train_batch_size, num_workers=16)
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
@@ -470,14 +470,19 @@ def train():
                         args.output_dir, f"checkpoint-{global_step}"
                     )
                     accelerator.save_state(save_path)
-                    save_ipadapter_checkpoint(model, global_step, save_path, accelerator)
+                    save_ipadapter_checkpoint(model, global_step, args.output_dir, accelerator)
                     logger.info(f"Saved state to {save_path}")
                     if args.keep_only_last_checkpoint:
                         # Remove all other checkpoints
                         for file in os.listdir(args.output_dir):
-                            if file.startswith("checkpoint") and file != os.path.basename(save_path):
+                            if file.startswith(
+                                "checkpoint"
+                            ) and file != os.path.basename(save_path):
                                 ckpt_num = int(file.split("-")[1])
-                                if (args.keep_interval is None or ckpt_num % args.keep_interval != 0):
+                                if (
+                                    args.keep_interval is None
+                                    or ckpt_num % args.keep_interval != 0
+                                ):
                                     logger.info(f"Removing {file}")
                                     shutil.rmtree(os.path.join(args.output_dir, file))
 
@@ -506,12 +511,6 @@ def train():
 
     accelerator.end_training()
 
-def cleanup():
-    dist.destroy_process_group()
 
 if __name__ == "__main__":
     train()
-    import torch.distributed as dist
-
-    # 在训练结束或出错时调用
-    cleanup()

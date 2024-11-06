@@ -483,13 +483,13 @@ def collate_fn(examples):
     }
 
 
-def get_data_loader(dataset, batch_size, shuffle=True):
+def get_data_loader(dataset, batch_size, num_workers, shuffle=True):
     dataloader = torch.utils.data.DataLoader(
         dataset,
         shuffle=shuffle,
         collate_fn=collate_fn,
         batch_size=batch_size,
-        num_workers=0,
+        num_workers=num_workers,
     )
 
     return dataloader
