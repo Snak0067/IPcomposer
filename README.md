@@ -3,7 +3,7 @@
 
 ## Usage
 ### <font style="color:rgb(31, 35, 40);">Environment Setup</font>
-```python
+```markdown
 conda create -n ipcomposer python
 conda activate ipcomposer
 pip install torch torchvision torchaudio
@@ -13,7 +13,8 @@ python setup.py install
 ```
 
 162上面的环境
-```
+
+```markdown
 conda activate fastcom
 cd /home/capg_bind/96/mxf/workgroup/huawei-chanllenge/IPcomposer
 bash scripts/run_training.sh
@@ -22,31 +23,31 @@ bash scripts/run_training.sh
 ### <font style="color:rgb(31, 35, 40);">Download the Pre-trained Models</font>
 总体保存的路径在
 
-```python
+```markdown
 96/mxf/workgroup/huawei-chanllenge/IPcomposer/outputs
 ```
 
 LVIS_178 这个数据集包含 985 张图像，训练结果保存在
 
-```python
+```markdown
 96/mxf/workgroup/huawei-chanllenge/IPcomposer/outputs/lvis_178
 ```
 
 LVIS_337 这个数据集包含 1462 张图像，训练结果保存在
 
-```python
+```markdown
 96/mxf/workgroup/huawei-chanllenge/IPcomposer/outputs/lvis_337
 ```
 
 ### Inference
-```python
+```markdown
 bash scripts/run_inference.sh
 ```
 
 ### <font style="color:rgb(31, 35, 40);">Training</font>
 <font style="color:rgb(31, 35, 40);">Prepare the LVIS（fast composer-type dataset）training data:</font>
 
-```python
+```markdown
 FFHQ_DATAPATH=/home/capg_bind/96/mww/datasets/ffhq_wild_files
 LVIS_178_DATAPATH=/home/capg_bind/97/zfd/diffusion/ZFD_Huawei/rare_v3.0
 LIVS_337_DATAPATH=/home/capg_bind/97/zfd/diffusion/ZFD_Huawei/rare_all_v1.0
@@ -56,13 +57,13 @@ LIVS_337_DATAPATH=/home/capg_bind/97/zfd/diffusion/ZFD_Huawei/rare_all_v1.0
 
 <font style="color:rgb(31, 35, 40);">单卡训练：</font>
 
-```python
+```markdown
 bash scripts/run_training_one_gpu.sh
 ```
 
 <font style="color:rgb(31, 35, 40);">多卡训练</font>
 
-```python
+```markdown
 bash scripts/run_training.sh
 ```
 
