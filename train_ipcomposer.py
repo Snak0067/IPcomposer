@@ -54,6 +54,9 @@ else:
 
 import itertools
 import torch.multiprocessing as mp
+import pickle
+from safetensors import safe_open
+import numpy as np
 
 logger = get_logger(__name__)
 
@@ -81,7 +84,71 @@ def save_ipadapter_checkpoint(model, global_step, output_dir, accelerator):
                 ip_sd[k.replace("adapter_modules.", "")] = state_dict[k]
         
         torch.save({"image_proj": image_proj_sd, "ip_adapter": ip_sd}, save_path)
-        print(f"ip-adapter model saved at {save_path}")
+        logger.info(f"ip-adapter model saved at {save_path}")
+
+
+def resume_checkpoint_by_hand(model, optimizer, scheduler, accelerator, checkpoint_dir):
+    # Load main model weights from a safetensors file
+    model_path = Path(checkpoint_dir) / "model.safetensors"
+    if model_path.exists():
+        with safe_open(model_path, framework="pt", device="cpu") as f:
+            main_model_state = {k: f.get_tensor(k) for k in f.keys()}
+        model.load_state_dict(main_model_state, strict=False)
+        logger.info(f"Loaded main model from {model_path}")
+    else:
+        logger.info(f"Main model checkpoint not found at {model_path}")
+
+    # Load optimizer state
+    optimizer_path = Path(checkpoint_dir) / "optimizer.bin"
+    if optimizer_path.exists():
+        optimizer_state = torch.load(optimizer_path, map_location="cpu")
+        optimizer.load_state_dict(optimizer_state)
+        logger.info(f"Loaded optimizer state from {optimizer_path}")
+    else:
+        logger.info(f"Optimizer state not found at {optimizer_path}")
+
+    # Load scheduler state
+    scheduler_path = Path(checkpoint_dir) / "scheduler.bin"
+    if scheduler_path.exists():
+        scheduler_state = torch.load(scheduler_path, map_location="cpu")
+        scheduler.load_state_dict(scheduler_state)
+        logger.info(f"Loaded scheduler state from {scheduler_path}")
+    else:
+        logger.info(f"Scheduler state not found at {scheduler_path}")
+
+    # 加载随机状态
+    random_states_path = Path(checkpoint_dir) / "random_states_0.pkl"
+    if random_states_path.exists():
+        random_states = torch.load(random_states_path, map_location="cpu")
+        
+        # 恢复完整的随机状态
+        if "torch_manual_seed" in random_states:
+            torch.set_rng_state(random_states["torch_manual_seed"])
+            logger.info("Restored torch RNG state.")
+
+        if "torch_cuda_manual_seed" in random_states:
+            torch.cuda.set_rng_state_all(random_states["torch_cuda_manual_seed"])
+            logger.info("Restored CUDA RNG state.")
+        
+        if "numpy_random_seed" in random_states:
+            np.random.set_state(random_states["numpy_random_seed"])
+            logger.info("Restored numpy random state.")
+        
+        logger.info(f"成功加载并恢复随机状态文件：{random_states_path}")
+    else:
+        logger.info(f"随机状态文件未找到：{random_states_path}")
+
+    # 加载 scaler 状态用于混合精度训练（如果适用）
+    scaler_path = Path(checkpoint_dir) / "scaler.pt"
+    if scaler_path.exists():
+        scaler_state = torch.load(scaler_path, map_location="cpu")
+        accelerator.scaler.load_state_dict(scaler_state)
+        logger.info(f"Loaded scaler state from {scaler_path}")
+
+    # 准备模型、优化器和调度器
+    model, optimizer, scheduler = accelerator.prepare(model, optimizer, scheduler)
+    return model, optimizer, scheduler
+    
 
 def train():
     args = parse_args()
@@ -92,7 +159,7 @@ def train():
         log_with=args.report_to,
         project_dir=args.logging_dir,
     )
-    print(f"Process rank: {accelerator.process_index}, using device: {accelerator.device}")
+    logger.info(f"Process rank: {accelerator.process_index}, using device: {accelerator.device}")
 
     # Handle the repository creation
     if accelerator.is_main_process:
@@ -277,7 +344,7 @@ def train():
         object_types = None  # all object types
     else:
         object_types = args.object_types.split("_")
-        print(f"Using object types: {object_types}")
+        logger.info(f"Using object types: {object_types}")
 
     train_dataset = IpComposerDataset(
         args.dataset_name,
@@ -379,7 +446,10 @@ def train():
             args.resume_from_checkpoint = None
         else:
             accelerator.print(f"Resuming from checkpoint {path}")
-            accelerator.load_state(os.path.join(args.output_dir, path))
+            # accelerator.load_state(os.path.join(args.output_dir, path))
+            # replace by load checkpoint by hand
+            checkpoint_path = os.path.join(args.output_dir, path)
+            model, optimizer, lr_scheduler = resume_checkpoint_by_hand(model, optimizer, lr_scheduler, accelerator, checkpoint_path)
             global_step = int(path.split("-")[1])
 
             resume_global_step = global_step * args.gradient_accumulation_steps
