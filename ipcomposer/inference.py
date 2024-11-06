@@ -60,9 +60,10 @@ def main():
 
     ckpt_name = "pytorch_model.bin"
 
-    model.load_state_dict(
-        torch.load(Path(args.finetuned_model_path) / ckpt_name, map_location="cpu")
-    )
+    # strict设置为false，不会因为 model中不存在 ip-adapter权重而报错
+    model.load_state_dict(torch.load(Path(args.finetuned_model_path) / ckpt_name, map_location="cpu"),strict=False)
+    # load ip-adapter weights
+    model.load_ip_adapter(args)
 
     model = model.to(device=accelerator.device, dtype=weight_dtype)
 
@@ -79,6 +80,9 @@ def main():
     pipe.image_encoder = model.image_encoder
 
     pipe.postfuse_module = model.postfuse_module
+    
+    # 加载 ip-adapter image encoder
+    pipe.ip_image_encoder = model.ip_image_encoder
 
     pipe.inference = types.MethodType(
         stable_diffusion_call_with_references_delayed_conditioning, pipe
@@ -160,6 +164,11 @@ def main():
     )
 
     cross_attention_kwargs = {}
+    
+    
+    # ip-adapter 
+    ip_image = Image.open(args.test_ip_adapter_image)
+    ip_image.resize((256, 256))
 
     images = pipe.inference(
         prompt_embeds=encoder_hidden_states,

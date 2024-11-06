@@ -511,6 +511,7 @@ class IpComposerModel(nn.Module):
         self.image_proj_model = image_proj_model
         self.adapter_modules = adapter_modules
         self.ip_image_encoder = ip_image_encoder
+        self.clip_image_processor = CLIPImageProcessor()
         if args.pretrained_ip_adapter_path is not None:
             self.load_ip_adapter_from_checkpoint(args.pretrained_ip_adapter_path)
             
@@ -536,91 +537,35 @@ class IpComposerModel(nn.Module):
         print(f"Successfully loaded ip-adapter weights from checkpoint {ckpt_path}")
     
     # ******** TODO: 下面代码基本上是推理使用，所以要针对fastcomposer推理管线进行修改 ******* #
-    
-    #     self.device = device
-    #     self.ip_image_encoder_path = ip_image_encoder_path
-    #     self.ip_ckpt = ip_ckpt
-    #     self.num_tokens = num_tokens
-        
-    #     self.pipe = sd_pipe.to(self.device)
-    #     self.set_ip_adapter()
-        
-    #     # load image encoder
-    #     self.ip_image_encoder = CLIPVisionModelWithProjection.from_pretrained(self.ip_image_encoder_path).to(
-    #         self.device, dtype=torch.float16
-    #     )
-    #     self.ip_clip_image_processor = CLIPImageProcessor()
-    #     # image proj model
-    #     self.ip_image_proj_model = self.init_proj()
+                
+    def load_ip_adapter(self, args):
+        if os.path.splitext(args.pretrained_ip_adapter_path)[-1] == ".safetensors":
+            state_dict = {"image_proj": {}, "ip_adapter": {}}
+            with safe_open(args.pretrained_ip_adapter_path, framework="pt", device="cpu") as f:
+                for key in f.keys():
+                    if key.startswith("image_proj."):
+                        state_dict["image_proj"][key.replace("image_proj.", "")] = f.get_tensor(key)
+                    elif key.startswith("ip_adapter."):
+                        state_dict["ip_adapter"][key.replace("ip_adapter.", "")] = f.get_tensor(key)
+        else:
+            state_dict = torch.load(args.pretrained_ip_adapter_path, map_location="cpu")
+        self.image_proj_model.load_state_dict(state_dict["image_proj"])
+        ip_layers = torch.nn.ModuleList(self.pipe.unet.attn_processors.values())
+        ip_layers.load_state_dict(state_dict["ip_adapter"])
 
-    #     self.load_ip_adapter()
     
-    # def init_proj(self):
-    #     image_proj_model = IpImageProjModel(
-    #         cross_attention_dim=self.pipe.unet.config.cross_attention_dim,
-    #         clip_embeddings_dim=self.image_encoder.config.projection_dim,
-    #         clip_extra_context_tokens=self.num_tokens,
-    #     ).to(self.device, dtype=torch.float16)
-    #     return image_proj_model
-        
-    # def set_ip_adapter(self):
-    #     unet = self.pipe.unet
-    #     attn_procs = {}
-    #     for name in unet.attn_processors.keys():
-    #         cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
-    #         if name.startswith("mid_block"):
-    #             hidden_size = unet.config.block_out_channels[-1]
-    #         elif name.startswith("up_blocks"):
-    #             block_id = int(name[len("up_blocks.")])
-    #             hidden_size = list(reversed(unet.config.block_out_channels))[block_id]
-    #         elif name.startswith("down_blocks"):
-    #             block_id = int(name[len("down_blocks.")])
-    #             hidden_size = unet.config.block_out_channels[block_id]
-    #         if cross_attention_dim is None:
-    #             attn_procs[name] = AttnProcessor()
-    #         else:
-    #             attn_procs[name] = IPAttnProcessor(
-    #                 hidden_size=hidden_size,
-    #                 cross_attention_dim=cross_attention_dim,
-    #                 scale=1.0,
-    #                 num_tokens=self.num_tokens,
-    #             ).to(self.device, dtype=torch.float16)
-                
-    #     unet.set_attn_processor(attn_procs)
-    #     if hasattr(self.pipe, "controlnet"):
-    #         if isinstance(self.pipe.controlnet, MultiControlNetModel):
-    #             for controlnet in self.pipe.controlnet.nets:
-    #                 controlnet.set_attn_processor(CNAttnProcessor(num_tokens=self.num_tokens))
-    #         else:
-    #             self.pipe.controlnet.set_attn_processor(CNAttnProcessor(num_tokens=self.num_tokens))
-                
-    # def load_ip_adapter(self):
-    #     if os.path.splitext(self.ip_ckpt)[-1] == ".safetensors":
-    #         state_dict = {"image_proj": {}, "ip_adapter": {}}
-    #         with safe_open(self.ip_ckpt, framework="pt", device="cpu") as f:
-    #             for key in f.keys():
-    #                 if key.startswith("image_proj."):
-    #                     state_dict["image_proj"][key.replace("image_proj.", "")] = f.get_tensor(key)
-    #                 elif key.startswith("ip_adapter."):
-    #                     state_dict["ip_adapter"][key.replace("ip_adapter.", "")] = f.get_tensor(key)
-    #     else:
-    #         state_dict = torch.load(self.ip_ckpt, map_location="cpu")
-    #     self.ip_image_proj_model.load_state_dict(state_dict["image_proj"])
-    #     ip_layers = torch.nn.ModuleList(self.pipe.unet.attn_processors.values())
-    #     ip_layers.load_state_dict(state_dict["ip_adapter"])
-    
-    # @torch.inference_mode()
-    # def get_image_embeds(self, pil_image=None, clip_image_embeds=None):
-    #     if pil_image is not None:
-    #         if isinstance(pil_image, Image.Image):
-    #             pil_image = [pil_image]
-    #         clip_image = self.ip_clip_image_processor(images=pil_image, return_tensors="pt").pixel_values
-    #         clip_image_embeds = self.image_encoder(clip_image.to(self.device, dtype=torch.float16)).image_embeds
-    #     else:
-    #         clip_image_embeds = clip_image_embeds.to(self.device, dtype=torch.float16)
-    #     image_prompt_embeds = self.ip_image_proj_model(clip_image_embeds)
-    #     uncond_image_prompt_embeds = self.ip_image_proj_model(torch.zeros_like(clip_image_embeds))
-    #     return image_prompt_embeds, uncond_image_prompt_embeds
+    @torch.inference_mode()
+    def get_image_embeds(self, pil_image=None, clip_image_embeds=None):
+        if pil_image is not None:
+            if isinstance(pil_image, Image.Image):
+                pil_image = [pil_image]
+            clip_image = self.clip_image_processor(images=pil_image, return_tensors="pt").pixel_values
+            clip_image_embeds = self.ip_image_encoder(clip_image.to(self.device, dtype=torch.float16)).image_embeds
+        else:
+            clip_image_embeds = clip_image_embeds.to(self.device, dtype=torch.float16)
+        image_prompt_embeds = self.image_proj_model(clip_image_embeds)
+        uncond_image_prompt_embeds = self.image_proj_model(torch.zeros_like(clip_image_embeds))
+        return image_prompt_embeds, uncond_image_prompt_embeds
 
     # def set_scale(self, scale):
     #     for attn_processor in self.pipe.unet.attn_processors.values():
