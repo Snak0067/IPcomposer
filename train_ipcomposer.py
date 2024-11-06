@@ -148,7 +148,7 @@ def train():
         revision=args.revision,
     )
     # 从本地路径SD加载预训练权重，同时定义IP-adapter 投影层、替换unet中的cross-Attn
-    model = IpComposerModel.from_pretrained(args)
+    model = IpComposerModel.from_pretrained(args) 
 
     if accelerator.mixed_precision == "fp16":
         weight_dtype = torch.float16
@@ -467,27 +467,17 @@ def train():
                 denoise_loss = 0.0
                 localization_loss = 0.0
 
-                if (
-                    global_step % args.checkpointing_steps == 0
-                    and accelerator.is_local_main_process
-                ):
-                    save_path = os.path.join(
-                        args.output_dir, f"checkpoint-{global_step}"
-                    )
+                if (global_step % args.checkpointing_steps == 0 and accelerator.is_local_main_process):
+                    save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                     accelerator.save_state(save_path)
-                    save_ipadapter_checkpoint(model, global_step, args.output_dir, accelerator)
+                    save_ipadapter_checkpoint(model, global_step, save_path, accelerator)
                     logger.info(f"Saved state to {save_path}")
                     if args.keep_only_last_checkpoint:
                         # Remove all other checkpoints
                         for file in os.listdir(args.output_dir):
-                            if file.startswith(
-                                "checkpoint"
-                            ) and file != os.path.basename(save_path):
+                            if file.startswith("checkpoint") and file != os.path.basename(save_path):
                                 ckpt_num = int(file.split("-")[1])
-                                if (
-                                    args.keep_interval is None
-                                    or ckpt_num % args.keep_interval != 0
-                                ):
+                                if (args.keep_interval is None or ckpt_num % args.keep_interval != 0):
                                     logger.info(f"Removing {file}")
                                     shutil.rmtree(os.path.join(args.output_dir, file))
 

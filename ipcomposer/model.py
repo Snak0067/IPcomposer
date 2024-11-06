@@ -512,7 +512,8 @@ class IpComposerModel(nn.Module):
         self.adapter_modules = adapter_modules
         self.ip_image_encoder = ip_image_encoder
         self.clip_image_processor = CLIPImageProcessor()
-        if args.pretrained_ip_adapter_path is not None:
+        if args.resume_from_checkpoint and args.pretrained_ip_adapter_path:
+            print("resume from pretrained ip-adapter checkpoint....")
             self.load_ip_adapter_from_checkpoint(args.pretrained_ip_adapter_path)
             
     def load_ip_adapter_from_checkpoint(self, ckpt_path: str):

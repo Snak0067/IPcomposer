@@ -61,4 +61,5 @@ accelerate launch \
     --image_encoder_path ${IMAGE_ENCODER} \
     --train_ip_adapter \
     --report_to wandb \
-    # --resume_from_checkpoint latest 
+    --resume_from_checkpoint latest \
+    --pretrained_ip_adapter_path ./outputs/LVIS_1203/ipcomposer-localize-lvis-1_5-1e-5/checkpoint-500/checkpoint-500_ip_adapter.bin

@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import os
 
 # Specify the path to your loss log file
-loss_log_path = "/home/mxf/96_public/mxf/workgroup/huawei-chanllenge/IPcomposer/logs/lvis_337/ipcomposer-localize-lvis-1_5-1e-5/11-05-2024_14-59-15_loss_log.txt"
+loss_log_path = "/home/capg_bind/96/mxf/workgroup/huawei-chanllenge/IPcomposer/logs/LVIS_1203/ipcomposer-localize-lvis-1_5-1e-5/11-06-2024_15-05-38_loss_log.txt"
 # loss_log_path = "/home/mxf/96_public/mxf/workgroup/huawei-chanllenge/IPcomposer/logs/ffhq/ipcomposer-localize-lvis-1_5-1e-5/11-05-2024_16-10-47_loss_log.txt"
 output_dir = os.path.dirname(loss_log_path)
 
