@@ -229,11 +229,7 @@ def train():
         param.data = param.data.to(weight_dtype)
 
     if args.load_model is not None:
-        # model.load_state_dict(
-        #     torch.load(Path(args.load_model) / "pytorch_model.bin", map_location="cpu")
-        # )
         
-        # Load main model weights from a safetensors file
         model_path = Path(args.load_model) / "model.safetensors"
         if model_path.exists():
             with safe_open(model_path, framework="pt", device="cpu") as f:
@@ -242,20 +238,19 @@ def train():
             logger.info(f"Loaded main model from {model_path}")
         else:
             logger.info(f"Main model checkpoint not found at {model_path}")
+        logger.info(f" checkpoint模型读取成功.... ")
             
-    # 将 UNet 模块的所有参数设置为可训练
-    model.unet.requires_grad_(True)
+    # 将 UNet 模块的所有参数设置为冻结
+    model.unet.requires_grad_(False)
     model.unet.to(torch.float32)
-    
+    model.postfuse_module.requires_grad_(False)
+    model.text_encoder.requires_grad_(False)
+    model.image_encoder.requires_grad_(False)
     # Postfuse 模块（后融合模块）处理文本和图像特征融合的模块
-    if args.text_image_linking in ["postfuse"] and not args.freeze_postfuse_module:
-        model.postfuse_module.requires_grad_(True)
-        model.postfuse_module.to(torch.float32)
-
-    # text_encoder 的参数设置为可训练 train_text_encoder默认为None
-    if args.train_text_encoder:
-        model.text_encoder.requires_grad_(True)
-        model.text_encoder.to(torch.float32)
+    
+    model.image_encoder.to(torch.float32)
+    model.postfuse_module.to(torch.float32)
+    model.text_encoder.to(torch.float32)
     
     if args.train_ip_adapter:
         # 训练 ip_adapter 的 image_proj_model 参数
@@ -265,35 +260,6 @@ def train():
         model.adapter_modules.requires_grad_(True) 
         model.adapter_modules.to(torch.float32)
     
-    # 用于控制训练 image_encoder 中的部分层 
-    if args.train_image_encoder:
-        # image_encoder_trainable_layers = 2 则表明训练倒数两层
-        if args.image_encoder_trainable_layers > 0:
-            for idx in range(args.image_encoder_trainable_layers): 
-                model.image_encoder.vision_model.encoder.layers[-1 - idx].requires_grad_(True)
-                model.image_encoder.vision_model.encoder.layers[-1 - idx].to(
-                    torch.float32
-                )
-        else:
-            # 如果没有指定则全训练image_encoder
-            model.image_encoder.requires_grad_(True)
-            model.image_encoder.to(torch.float32)
-
-    # Create EMA for the unet.
-    if args.use_ema:
-        ema_unet = UNet2DConditionModel.from_pretrained(
-            args.pretrained_model_name_or_path,
-            subfolder="unet",
-            revision=args.revision,
-        )
-        model.load_ema(ema_unet)
-        if args.load_model is not None:
-            model.ema_param.load_state_dict(
-                torch.load(
-                    Path(args.load_model) / "custom_checkpoint_0.pkl",
-                    map_location="cpu",
-                )
-            )
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
@@ -302,12 +268,7 @@ def train():
             raise ValueError(
                 "xformers is not available. Make sure it is installed correctly"
             )
-    # 如果启用了 gradient_checkpointing，并且需要训练 text_encoder，
-    # 那么将对 text_encoder 模块启用梯度检查点（Gradient Checkpointing）
-    # 减少内存使用的技术，在前向传播时仅保留部分计算图（通常是关键层的输出），然后在反向传播时重新计算其余部分
-    if args.gradient_checkpointing:
-        if args.train_text_encoder:
-            model.text_encoder.gradient_checkpointing_enable()
+
 
     # Enable TF32 for faster training on Ampere GPUs,
     # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
@@ -322,27 +283,10 @@ def train():
             * accelerator.num_processes
         )
 
-    optimizer_cls = torch.optim.AdamW
-    # 获取需要训练的参数，包括 unet、其他模块和 ip_adapter
-    unet_params = list([p for p in model.unet.parameters() if p.requires_grad])
-    other_params = list(
-        [p for n, p in model.named_parameters() if p.requires_grad and "unet" not in n]
-    )
+    parameters = itertools.chain(model.image_proj_model.parameters(), model.adapter_modules.parameters())
     
-
-    # 将 ip_adapter 参数加入到参数列表中
-    parameters = unet_params + other_params
+    optimizer = torch.optim.AdamW(parameters, lr=args.learning_rate, weight_decay=args.adam_weight_decay)
     
-    # 对unet和其他模块的参数的学习率进行分别计算
-    optimizer = optimizer_cls(
-        [
-            {"params": unet_params, "lr": args.learning_rate * args.unet_lr_scale},
-            {"params": other_params, "lr": args.learning_rate},
-        ],
-        betas=(args.adam_beta1, args.adam_beta2),
-        weight_decay=args.adam_weight_decay,
-        eps=args.adam_epsilon,
-    )
 
     # 对图像和分割图（segmentation map）同时进行处理
     train_transforms = get_train_transforms_with_segmap(args)
@@ -439,9 +383,9 @@ def train():
     global_step = 0
     first_epoch = 0
 
-    logger.info(f" 恢复断点模型")
     # Potentially load in the weights and states from a previous save
     if args.resume_from_checkpoint:
+        logger.info(f" 恢复断点模型")
         if args.resume_from_checkpoint != "latest":
             path = os.path.basename(args.resume_from_checkpoint)
         else:
@@ -476,7 +420,6 @@ def train():
                 model.module.ema_param.to(accelerator.device)
 
     # Only show the progress bar once on each machine.
-    logger.info(f" checkpoint模型读取成功.... ")
     progress_bar = tqdm(
         range(global_step, args.max_train_steps),
         disable=not accelerator.is_local_main_process,
