@@ -88,8 +88,13 @@ class DemoDataset(object):
         return self.prepare_data()
 
     def _tokenize_and_mask_noun_phrases_ends(self, caption):
+        # 对输入文本进行分词：
+        # 使用 self.tokenizer.encode(caption) 对输入文本 caption 进行分词，生成 input_ids 列表，
+        # 其中每个元素表示一个词的 token ID。
         input_ids = self.tokenizer.encode(caption)
 
+        # 遍历 input_ids，在遇到 self.image_token_id（即特殊的图片 token ID）时
+        # 将前一个 token 的掩码设置为 True，表示名词短语的结尾。
         noun_phrase_end_mask = [False for _ in input_ids]
         clean_input_ids = []
         clean_index = 0
@@ -102,7 +107,7 @@ class DemoDataset(object):
                 clean_index += 1
 
         max_len = self.tokenizer.model_max_length
-
+        # 获取模型的最大长度 max_len，并将 clean_input_ids 和 noun_phrase_end_mask 都调整为此长度：
         if len(clean_input_ids) > max_len:
             clean_input_ids = clean_input_ids[:max_len]
         else:
@@ -116,7 +121,7 @@ class DemoDataset(object):
             noun_phrase_end_mask = noun_phrase_end_mask + [False] * (
                 max_len - len(noun_phrase_end_mask)
             )
-
+        # 转换为张量格式
         clean_input_ids = torch.tensor(clean_input_ids, dtype=torch.long)
         noun_phrase_end_mask = torch.tensor(noun_phrase_end_mask, dtype=torch.bool)
         return clean_input_ids.unsqueeze(0), noun_phrase_end_mask.unsqueeze(0)

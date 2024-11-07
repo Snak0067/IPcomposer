@@ -245,7 +245,7 @@ class StableDiffusionFastCompposerPipeline(StableDiffusionPipeline):
 
         # 3. Encode input prompt
         prompt_text_only = prompt.replace("img", "")
-
+        
         prompt_embeds = self._encode_prompt(
             prompt_text_only,
             device,
@@ -392,6 +392,8 @@ def stable_diffusion_call_with_references_delayed_conditioning(
     callback_steps: int = 1,
     cross_attention_kwargs: Optional[Dict[str, Any]] = None,
     start_merge_step=0,
+    image_prompt_embeds=None,
+    uncond_image_prompt_embeds=None
 ):
     # 0. Default height and width to unet
     height = height or self.unet.config.sample_size * self.vae_scale_factor
@@ -409,10 +411,19 @@ def stable_diffusion_call_with_references_delayed_conditioning(
     )
 
     # 2. Define call parameters
+    if negative_prompt is None:
+        negative_prompt = "monochrome, lowres, bad anatomy, worst quality, low quality"
+    
+    # 2. Define call parameters
     if prompt is not None and isinstance(prompt, str):
         batch_size = 1
+        if isinstance(negative_prompt, list):
+            negative_prompt = negative_prompt[0]
+            
     elif prompt is not None and isinstance(prompt, list):
         batch_size = len(prompt)
+        if isinstance(negative_prompt, str):
+            negative_prompt = [negative_prompt] * len(prompt)
     else:
         batch_size = prompt_embeds.shape[0]
 
@@ -425,15 +436,33 @@ def stable_diffusion_call_with_references_delayed_conditioning(
     assert do_classifier_free_guidance
 
     # 3. Encode input prompt
-    prompt_embeds = self._encode_prompt(
-        prompt,
-        device,
-        num_images_per_prompt,
-        do_classifier_free_guidance,
-        negative_prompt,
-        prompt_embeds=prompt_embeds,
-        negative_prompt_embeds=negative_prompt_embeds,
-    )
+    # with torch.inference_mode():
+    #     prompt_embeds = self._encode_prompt(
+    #         prompt,
+    #         device,
+    #         num_images_per_prompt,
+    #         do_classifier_free_guidance,
+    #         negative_prompt,
+    #         prompt_embeds=prompt_embeds,
+    #         negative_prompt_embeds=negative_prompt_embeds,
+    #     )
+    with torch.inference_mode():
+        (
+            prompt_embeds,
+            negative_prompt_embeds,
+            pooled_prompt_embeds,
+            negative_pooled_prompt_embeds,
+        ) = self.pipe.encode_prompt(
+            prompt,
+            device,
+            num_images_per_prompt=num_images_per_prompt,
+            do_classifier_free_guidance=True,
+            negative_prompt=negative_prompt,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+        )
+        # prompt_embeds = torch.cat([prompt_embeds, image_prompt_embeds], dim=1)
+        # negative_prompt_embeds = torch.cat([negative_prompt_embeds, uncond_image_prompt_embeds], dim=1)
 
     prompt_embeds = torch.cat([prompt_embeds, prompt_embeds_text_only], dim=0)
 
@@ -474,17 +503,25 @@ def stable_diffusion_call_with_references_delayed_conditioning(
                 current_prompt_embeds = torch.cat(
                     [null_prompt_embeds, text_prompt_embeds], dim=0
                 )
+                
             else:
                 current_prompt_embeds = torch.cat(
                     [null_prompt_embeds, augmented_prompt_embeds], dim=0
                 )
+            
+            # introduce ip-adapter image embeddings into hidden_states
+            current_prompt_embeds = torch.cat([current_prompt_embeds, image_prompt_embeds], dim=1)
+            negative_prompt_embeds = torch.cat([negative_prompt_embeds, uncond_image_prompt_embeds], dim=1)
 
             # predict the noise residual
             noise_pred = self.unet(
                 latent_model_input,
                 t,
                 encoder_hidden_states=current_prompt_embeds,
+                negative_prompt_embeds=negative_prompt_embeds,
                 cross_attention_kwargs=cross_attention_kwargs,
+                pooled_prompt_embeds=pooled_prompt_embeds,
+                negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
             ).sample
 
             # perform guidance

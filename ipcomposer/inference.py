@@ -87,6 +87,22 @@ def main():
     pipe.inference = types.MethodType(
         stable_diffusion_call_with_references_delayed_conditioning, pipe
     )
+    
+    # ip-adapter operation
+    ip_image = Image.open(args.test_ip_adapter_image)
+    ip_image.resize((256, 256))
+    
+    model.set_scale(scale=1.0)
+    image_prompt_embeds, uncond_image_prompt_embeds = model.get_image_embeds(
+        pil_image=ip_image, clip_image_embeds=None
+    )
+    bs_embed, seq_len, _ = image_prompt_embeds.shape
+    
+    num_samples = args.num_images_per_prompt
+    image_prompt_embeds = image_prompt_embeds.repeat(1, num_samples, 1)
+    image_prompt_embeds = image_prompt_embeds.view(bs_embed * num_samples, seq_len, -1)
+    uncond_image_prompt_embeds = uncond_image_prompt_embeds.repeat(1, num_samples, 1)
+    uncond_image_prompt_embeds = uncond_image_prompt_embeds.view(bs_embed * num_samples, seq_len, -1)
 
     del model
 
@@ -166,9 +182,8 @@ def main():
     cross_attention_kwargs = {}
     
     
-    # ip-adapter 
-    ip_image = Image.open(args.test_ip_adapter_image)
-    ip_image.resize((256, 256))
+
+    
 
     images = pipe.inference(
         prompt_embeds=encoder_hidden_states,
