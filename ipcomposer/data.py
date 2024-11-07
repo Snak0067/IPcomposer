@@ -204,6 +204,7 @@ class IpComposerDataset(torch.utils.data.Dataset):
         self.object_types = object_types
         # ip_adapter
         self.clip_image_processor = CLIPImageProcessor()
+        self.MIN_BBOX_AREA = 30  # 设置最小 bbox 面积阈值
 
         if split == "all":
             image_ids_path = os.path.join(root, "image_ids.txt")
@@ -308,6 +309,24 @@ class IpComposerDataset(torch.utils.data.Dataset):
         caption = info_dict["caption"]
         segments = info_dict["segments"]
         
+        filtered_segments = [
+            segment for segment in segments if (segment['bbox'][2] - segment['bbox'][0]) * (segment['bbox'][3] - segment['bbox'][1]) >= self.MIN_BBOX_AREA
+        ]
+        
+        segments = filtered_segments
+        # 生成新的 caption
+        words = [segment['word'] for segment in segments]
+        caption = f"a photo of {' and '.join(words)}"
+
+        # 更新每个 segment 的 start 和 end 位置
+        current_position = len("a photo of ")
+        for segment in segments:
+            start = caption.find(segment['word'], current_position)
+            if start != -1:
+                segment['start'] = start
+                segment['end'] = start + len(segment['word'])
+                current_position = segment['end']
+        
         # 从 info_dict 中提取 caption 和 segments。如果指定了 object_types, 则过滤 segments 以只保留特定类型的对象。
         if self.object_types is not None:
             segments = [
@@ -356,6 +375,7 @@ class IpComposerDataset(torch.utils.data.Dataset):
         for segment in segments:
             id = segment["id"]
             bbox = segment["bbox"]  # [h1, w1, h2, w2]
+            
             # 检查并将 bbox 的元素转换为整数
             bbox = [int(coord) if not isinstance(coord, int) else coord for coord in bbox]
             
@@ -390,7 +410,6 @@ class IpComposerDataset(torch.utils.data.Dataset):
         else:
             padding_object_pixel_values = self.object_transforms(background)
             padding_object_pixel_values[:] = 0
-
         # 填充对象像素和分割图到最大数量
         if num_objects < self.max_num_objects:
             object_pixel_values += [
@@ -489,8 +508,7 @@ def get_data_loader(dataset, batch_size, num_workers, shuffle=True):
         shuffle=shuffle,
         collate_fn=collate_fn,
         batch_size=batch_size,
-        num_workers=num_workers,
-        pin_memory=True
+        num_workers=num_workers
     )
 
     return dataloader
