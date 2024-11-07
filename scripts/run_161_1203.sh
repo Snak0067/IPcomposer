@@ -1,14 +1,14 @@
 export WANDB_NAME=ipcomposer-localize-lvis-1_5-1e-5
 export WANDB_DISABLE_SERVICE=true
-CUDA_VISIBLE_DEVICES=2,3,4
+CUDA_VISIBLE_DEVICES=2,3,4,5,6
 
 FFHQ_DATAPATH=/home/mxf/96_public/mww/datasets/ffhq_wild_files
 LVIS_178_DATAPATH=/home/mxf/97/zfd/diffusion/ZFD_Huawei/rare_v3.0
 LIVS_337_DATAPATH=/home/mxf/97/zfd/diffusion/ZFD_Huawei/lvis_all_v2.0
-LVIS_1203_DATAPATH=/home/mxf/97/zfd/diffusion/ZFD_Huawei/lvis_1203_add_a_photo_of
+LVIS_1203_DATAPATH=/home/mxf/97/zfd/diffusion/ZFD_Huawei/lvis_1203_add_a_photo_of_check
 
 DATASET_PATH=${LVIS_1203_DATAPATH}
-DATASET_NAME="LVIS_1203"
+DATASET_NAME="LVIS_1203_161"
 
 # DATASET_PATH=${LVIS_178_DATAPATH}
 # DATASET_NAME="lvis_178"
@@ -22,19 +22,19 @@ accelerate launch \
     --machine_rank 0 \
     --num_machines 1 \
     --main_process_port 11135 \
-    --num_processes 3 \
+    --num_processes 5 \
     --multi_gpu \
     train_ipcomposer.py \
     --pretrained_model_name_or_path ${FAMILY}/${MODEL} \
     --dataset_name ${DATASET_PATH} \
     --logging_dir logs/${DATASET_NAME}/${WANDB_NAME} \
     --output_dir outputs/${DATASET_NAME}/${WANDB_NAME} \
-    --max_train_steps 20000 \
+    --max_train_steps 50000 \
     --num_train_epochs 250 \
-    --train_batch_size 12 \
+    --train_batch_size 3 \
     --learning_rate 1e-5 \
     --unet_lr_scale 1.0 \
-    --checkpointing_steps 200 \
+    --checkpointing_steps 500 \
     --mixed_precision bf16 \
     --allow_tf32 \
     --keep_only_last_checkpoint \
