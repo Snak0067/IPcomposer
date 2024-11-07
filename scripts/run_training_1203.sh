@@ -31,7 +31,7 @@ accelerate launch \
     --output_dir outputs/${DATASET_NAME}/${WANDB_NAME} \
     --max_train_steps 50000 \
     --num_train_epochs 250 \
-    --train_batch_size 16 \
+    --train_batch_size 4 \
     --learning_rate 1e-5 \
     --unet_lr_scale 1.0 \
     --checkpointing_steps 500 \

@@ -309,7 +309,6 @@ class IpComposerDataset(torch.utils.data.Dataset):
         caption = info_dict["caption"]
         segments = info_dict["segments"]
         
-        # 过滤掉面积小于阈值的 segments
         filtered_segments = [
             segment for segment in segments if (segment['bbox'][2] - segment['bbox'][0]) * (segment['bbox'][3] - segment['bbox'][1]) >= self.MIN_BBOX_AREA
         ]
@@ -411,7 +410,6 @@ class IpComposerDataset(torch.utils.data.Dataset):
         else:
             padding_object_pixel_values = self.object_transforms(background)
             padding_object_pixel_values[:] = 0
-
         # 填充对象像素和分割图到最大数量
         if num_objects < self.max_num_objects:
             object_pixel_values += [

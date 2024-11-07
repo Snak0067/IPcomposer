@@ -428,6 +428,7 @@ def train():
     global_step = 0
     first_epoch = 0
 
+    logger.info(f" 恢复断点模型")
     # Potentially load in the weights and states from a previous save
     if args.resume_from_checkpoint:
         if args.resume_from_checkpoint != "latest":
@@ -464,12 +465,14 @@ def train():
                 model.module.ema_param.to(accelerator.device)
 
     # Only show the progress bar once on each machine.
+    logger.info(f" checkpoint模型读取成功.... ")
     progress_bar = tqdm(
         range(global_step, args.max_train_steps),
         disable=not accelerator.is_local_main_process,
     )
 
     for epoch in range(first_epoch, args.num_train_epochs):
+        logger.info(f" 进入新的epoch.... ")
         model.train()
         train_loss = 0.0
         denoise_loss = 0.0
@@ -477,9 +480,8 @@ def train():
         for step, batch in enumerate(train_dataloader):
             progress_bar.set_description("Global step: {}".format(global_step))
 
-            with accelerator.accumulate(model), torch.backends.cuda.sdp_kernel(
-                enable_flash=not args.disable_flashattention
-            ):
+            with torch.backends.cuda.sdp_kernel(enable_flash=True):  # Explicitly enable Flash Attention
+                
                 return_dict = model(batch, noise_scheduler)
                 loss = return_dict["loss"]
 
