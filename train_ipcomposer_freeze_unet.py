@@ -229,7 +229,6 @@ def train():
         param.data = param.data.to(weight_dtype)
 
     if args.load_model is not None:
-        
         model_path = Path(args.load_model) / "model.safetensors"
         if model_path.exists():
             with safe_open(model_path, framework="pt", device="cpu") as f:
@@ -495,17 +494,17 @@ def train():
 
                 if (global_step % args.checkpointing_steps == 0 and accelerator.is_local_main_process):
                     save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-                    accelerator.save_state(save_path)
+                    # accelerator.save_state(save_path)
                     save_ipadapter_checkpoint(model, global_step, save_path, accelerator)
                     logger.info(f"Saved state to {save_path}")
-                    if args.keep_only_last_checkpoint:
-                        # Remove all other checkpoints
-                        for file in os.listdir(args.output_dir):
-                            if file.startswith("checkpoint") and file != os.path.basename(save_path):
-                                ckpt_num = int(file.split("-")[1])
-                                if (args.keep_interval is None or ckpt_num % args.keep_interval != 0):
-                                    logger.info(f"Removing {file}")
-                                    shutil.rmtree(os.path.join(args.output_dir, file))
+                    # if args.keep_only_last_checkpoint:
+                    #     # Remove all other checkpoints
+                    #     for file in os.listdir(args.output_dir):
+                    #         if file.startswith("checkpoint") and file != os.path.basename(save_path):
+                    #             ckpt_num = int(file.split("-")[1])
+                    #             if (args.keep_interval is None or ckpt_num % args.keep_interval != 0):
+                    #                 logger.info(f"Removing {file}")
+                    #                 shutil.rmtree(os.path.join(args.output_dir, file))
 
             logs = {
                 "l_noise": return_dict["denoise_loss"].detach().item(),
