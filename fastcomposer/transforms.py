@@ -97,8 +97,8 @@ class RandomZoomIn(torch.nn.Module):
     def forward(self, image: torch.Tensor):
         zoom = torch.rand(1) * (self.max_zoom - self.min_zoom) + self.min_zoom
         original_shape = image.shape
-        new_height = max(20, int(zoom * image.shape[1]))
-        new_width = max(20, int(zoom * image.shape[2]))
+        new_height = max(32, int(zoom * image.shape[1]))
+        new_width = max(32, int(zoom * image.shape[2]))
         image = T.functional.resize(
             image,
             # (int(zoom * image.shape[1]), int(zoom * image.shape[2])),

@@ -685,9 +685,25 @@ def parse_args(default=False):
         "--image_encoder_path",
         type=str,
         default=None,
-        required=True,
+        required=False,
         help="Path to CLIP image encoder",
     )
+    parser.add_argument(
+        "--test_ip_adapter_image",
+        type=str,
+        default=None,
+        required=False,
+        help="Path to ip-adapter reference image path",
+    )
+    parser.add_argument(
+        "--output_name",
+        type=str,
+        default=None,
+        required=False,
+        help="inference image base name",
+    )
+    
+    
 
     if default:
         return parser.parse_args([])

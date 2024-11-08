@@ -495,6 +495,8 @@ def train():
                 if (global_step % args.checkpointing_steps == 0 and accelerator.is_local_main_process):
                     save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                     # accelerator.save_state(save_path)
+                    if not os.path.exists(save_path):
+                        os.makedirs(save_path)
                     save_ipadapter_checkpoint(model, global_step, save_path, accelerator)
                     logger.info(f"Saved state to {save_path}")
                     # if args.keep_only_last_checkpoint:

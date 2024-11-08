@@ -1,20 +1,11 @@
 from fastcomposer.transforms import get_object_transforms
 from fastcomposer.data import DemoDataset
-
-from ipcomposer.data import get_data_loader, IpComposerDataset
-from ip_adapter.ip_adapter import ImageProjModel
-from ip_adapter.utils import is_torch2_available
-if is_torch2_available():
-    from ip_adapter.attention_processor import IPAttnProcessor2_0 as IPAttnProcessor, AttnProcessor2_0 as AttnProcessor
-else:
-    from ip_adapter.attention_processor import IPAttnProcessor, AttnProcessor
-
-import itertools
-from ipcomposer.model import IpComposerModel
-from diffusers import StableDiffusionPipeline
+from fastcomposer.model import FastComposerModel
+from diffusers import StableDiffusionPipeline, AutoPipelineForText2Image
+from diffusers.utils import load_image
 from transformers import CLIPTokenizer
 from accelerate.utils import set_seed
-from fastcomposer.utils import parse_args
+from ipcomposer.utils import parse_args
 from accelerate import Accelerator
 from pathlib import Path
 from PIL import Image
@@ -28,6 +19,32 @@ from fastcomposer.pipeline import (
 import types
 import itertools
 import os
+from safetensors import safe_open
+
+def load_model(model, args):
+    model_path = Path(args.finetuned_model_path)
+    
+    if model_path.is_dir():
+        # 检查是否为 `.bin` 或 `.safetensors` 文件
+        bin_path = model_path / "pytorch_model.bin"
+        safetensor_path = model_path / "model.safetensors"
+
+        if bin_path.exists():
+            # 以 .bin 文件加载模型
+            print("Loading pretrained model (unet, text-encoder, image-encoder) from .bin file...")
+            model.load_state_dict(torch.load(bin_path, map_location="cpu"), strict=False)
+
+        elif safetensor_path.exists():
+            # 以 .safetensors 文件加载模型
+            print("Loading pretrained model (unet, text-encoder, image-encoder) from .safetensors file...")
+            with safe_open(safetensor_path, framework="pt", device="cpu") as f:
+                main_model_state = {k: f.get_tensor(k) for k in f.keys()}
+            model.load_state_dict(main_model_state, strict=False)
+
+        else:
+            print("No compatible checkpoint file found in the specified path.")
+    else:
+        print(f"Specified model path {model_path} is invalid.")
 
 @torch.no_grad()
 def main():
@@ -52,18 +69,20 @@ def main():
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
 
-    pipe = StableDiffusionPipeline.from_pretrained(
+    # 加载和配置生成管道
+    pipe = AutoPipelineForText2Image.from_pretrained(
         args.pretrained_model_name_or_path, torch_dtype=weight_dtype
     )
+    pipe.load_ip_adapter("/home/capg_bind/96/zfd/0.hug/h94/IP-Adapter/", subfolder="models", weight_name="ip-adapter_sd15.bin")
+    pipe.set_ip_adapter_scale(0.6)
+    
+    image = load_image(args.test_ip_adapter_image)
+    
 
-    model = IpComposerModel.from_pretrained(args)
+    # 加载和配置 FastComposerModel
+    model = FastComposerModel.from_pretrained(args)
 
-    ckpt_name = "pytorch_model.bin"
-
-    # strict设置为false，不会因为 model中不存在 ip-adapter权重而报错
-    model.load_state_dict(torch.load(Path(args.finetuned_model_path) / ckpt_name, map_location="cpu"),strict=False)
-    # load ip-adapter weights
-    model.load_ip_adapter(args)
+    load_model(model, args)
 
     model = model.to(device=accelerator.device, dtype=weight_dtype)
 
@@ -80,29 +99,10 @@ def main():
     pipe.image_encoder = model.image_encoder
 
     pipe.postfuse_module = model.postfuse_module
-    
-    # 加载 ip-adapter image encoder
-    pipe.ip_image_encoder = model.ip_image_encoder
 
     pipe.inference = types.MethodType(
         stable_diffusion_call_with_references_delayed_conditioning, pipe
     )
-    
-    # ip-adapter operation
-    ip_image = Image.open(args.test_ip_adapter_image)
-    ip_image.resize((256, 256))
-    
-    model.set_scale(scale=1.0)
-    image_prompt_embeds, uncond_image_prompt_embeds = model.get_image_embeds(
-        pil_image=ip_image, clip_image_embeds=None
-    )
-    bs_embed, seq_len, _ = image_prompt_embeds.shape
-    
-    num_samples = args.num_images_per_prompt
-    image_prompt_embeds = image_prompt_embeds.repeat(1, num_samples, 1)
-    image_prompt_embeds = image_prompt_embeds.view(bs_embed * num_samples, seq_len, -1)
-    uncond_image_prompt_embeds = uncond_image_prompt_embeds.repeat(1, num_samples, 1)
-    uncond_image_prompt_embeds = uncond_image_prompt_embeds.view(bs_embed * num_samples, seq_len, -1)
 
     del model
 
@@ -165,12 +165,12 @@ def main():
         input_ids, image_token_mask, object_embeds, num_objects
     )[0]
 
-    encoder_hidden_states_text_only = pipe._encode_prompt(
+    encoder_hidden_states_text_only = pipe.encode_prompt(
         prompt_text_only,
         accelerator.device,
         args.num_images_per_prompt,
         do_classifier_free_guidance=False,
-    )
+    )[0]
 
     encoder_hidden_states = pipe.postfuse_module(
         encoder_hidden_states,
@@ -180,10 +180,6 @@ def main():
     )
 
     cross_attention_kwargs = {}
-    
-    
-
-    
 
     images = pipe.inference(
         prompt_embeds=encoder_hidden_states,
@@ -195,6 +191,7 @@ def main():
         cross_attention_kwargs=cross_attention_kwargs,
         prompt_embeds_text_only=encoder_hidden_states_text_only,
         start_merge_step=args.start_merge_step,
+        ip_adapter_image=image,
     ).images
 
     for instance_id in range(args.num_images_per_prompt):

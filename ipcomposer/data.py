@@ -61,7 +61,7 @@ class DemoDataset(object):
         tokenizer,
         object_transforms,
         image_token="<|image|>",
-        max_num_objects=4,
+        max_num_objects=2,
         device=None,
     ) -> None:
         self.test_caption = test_caption
@@ -127,14 +127,8 @@ class DemoDataset(object):
         image_ids = []
 
         for image_id in self.image_ids:
-            reference_image_path = sorted(
-                glob.glob(os.path.join(self.test_reference_folder, image_id, "*.jpg"))
-                + glob.glob(os.path.join(self.test_reference_folder, image_id, "*.png"))
-                + glob.glob(
-                    os.path.join(self.test_reference_folder, image_id, "*.jpeg")
-                )
-            )[0]
-
+            reference_image_path = os.path.join(self.test_reference_folder, image_id)
+            print(f"reference_image_path: {reference_image_path}")
             reference_image = self.object_transforms(
                 read_image(reference_image_path, mode=ImageReadMode.RGB)
             ).to(self.device)
