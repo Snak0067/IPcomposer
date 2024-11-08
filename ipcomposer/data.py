@@ -7,6 +7,7 @@ import numpy as np
 import random
 from copy import deepcopy
 from transformers import CLIPImageProcessor
+import time
 
 
 
@@ -287,8 +288,159 @@ class IpComposerDataset(torch.utils.data.Dataset):
         noun_phrase_end_mask = torch.tensor(noun_phrase_end_mask, dtype=torch.bool)
         return clean_input_ids.unsqueeze(0), noun_phrase_end_mask.unsqueeze(0)
 
+    import time
+
     @torch.no_grad()
     def preprocess(self, image, info_dict, segmap, image_id):
+        """
+            image: 输入的图像。
+            info_dict: 包含图像元数据的字典, 包含 "caption" 和 "segments" 信息。
+            caption: 图像的描述文本。
+            segments: 包含对象分割信息的列表, 每个对象分割信息包含对象的 id、coco_label 和 bbox。
+            segmap: 图像对应的分割图, 用于区分图像中的不同对象。
+            image_id: 图像的唯一标识符。
+        """
+        start_time = time.time()
+
+        # Step 1: CLIP image processing
+        t0 = time.time()
+        clip_image = self.clip_image_processor(images=image, return_tensors="pt").pixel_values
+        t1 = time.time()
+        print(f"CLIP image processing took {t1 - t0:.4f} seconds")
+
+        # Step 2: Segment filtering
+        caption = info_dict["caption"]
+        segments = info_dict["segments"]
+
+        t0 = time.time()
+        filtered_segments = [
+            segment for segment in segments if (segment['bbox'][2] - segment['bbox'][0]) * (segment['bbox'][3] - segment['bbox'][1]) >= self.MIN_BBOX_AREA
+        ]
+        segments = filtered_segments
+        words = [segment['word'] for segment in segments]
+        caption = f"a photo of {' and '.join(words)}"
+        t1 = time.time()
+        print(f"Segment filtering and caption generation took {t1 - t0:.4f} seconds")
+
+        # Step 3: Update segment positions
+        t0 = time.time()
+        current_position = len("a photo of ")
+        for segment in segments:
+            start = caption.find(segment['word'], current_position)
+            if start != -1:
+                segment['start'] = start
+                segment['end'] = start + len(segment['word'])
+                current_position = segment['end']
+        t1 = time.time()
+        print(f"Updating segment positions took {t1 - t0:.4f} seconds")
+
+        # Step 4: Transformations on image and segmap
+        t0 = time.time()
+        pixel_values, transformed_segmap = self.train_transforms(image, segmap)
+        t1 = time.time()
+        print(f"Image and segmap transformations took {t1 - t0:.4f} seconds")
+
+        object_pixel_values = []
+        object_segmaps = []
+
+        # Step 5: Handle conditions for dropping or modifying caption
+        drop_image_embed = 0
+        prob = random.random()
+        t0 = time.time()
+        if prob < self.uncondition_prob:
+            caption = ""
+            segments = []
+            drop_image_embed = 1
+        elif prob < self.uncondition_prob + self.text_only_prob:
+            segments = []
+            drop_image_embed = 1
+        else:
+            segments = [
+                segment
+                for segment in segments
+                if random.random() < self.object_appear_prob
+            ]
+        t1 = time.time()
+        print(f"Condition handling took {t1 - t0:.4f} seconds")
+
+        # Step 6: Sample and sort segments
+        t0 = time.time()
+        if len(segments) > self.max_num_objects:
+            segments = random.sample(segments, self.max_num_objects)
+        segments = sorted(segments, key=lambda x: x["end"])
+        t1 = time.time()
+        print(f"Sampling and sorting segments took {t1 - t0:.4f} seconds")
+
+        # Step 7: Generate object images
+        t0 = time.time()
+        background = self.object_processor.get_background(image)
+        for segment in segments:
+            id = segment["id"]
+            bbox = segment["bbox"]
+            bbox = [int(coord) if not isinstance(coord, int) else coord for coord in bbox]
+            object_image = self.object_processor(
+                deepcopy(image), background, segmap, id, bbox
+            )
+            object_pixel_values.append(self.object_transforms(object_image))
+            object_segmaps.append(transformed_segmap == id)
+        t1 = time.time()
+        print(f"Generating object images took {t1 - t0:.4f} seconds")
+
+        # Step 8: Tokenization and masking
+        t0 = time.time()
+        input_ids, image_token_mask = self._tokenize_and_mask_noun_phrases_ends(
+            caption, segments
+        )
+        image_token_idx, image_token_idx_mask = prepare_image_token_idx(
+            image_token_mask, self.max_num_objects
+        )
+        num_objects = image_token_idx_mask.sum().item()
+        t1 = time.time()
+        print(f"Tokenization and masking took {t1 - t0:.4f} seconds")
+
+        # Step 9: Object pixel values padding
+        t0 = time.time()
+        object_pixel_values = object_pixel_values[:num_objects]
+        object_segmaps = object_segmaps[:num_objects]
+        if num_objects > 0:
+            padding_object_pixel_values = torch.zeros_like(object_pixel_values[0])
+        else:
+            padding_object_pixel_values = self.object_transforms(background)
+            padding_object_pixel_values[:] = 0
+
+        if num_objects < self.max_num_objects:
+            object_pixel_values += [
+                torch.zeros_like(padding_object_pixel_values)
+                for _ in range(self.max_num_objects - num_objects)
+            ]
+            object_segmaps += [
+                torch.zeros_like(transformed_segmap)
+                for _ in range(self.max_num_objects - num_objects)
+            ]
+        object_pixel_values = torch.stack(object_pixel_values).to(memory_format=torch.contiguous_format).float()
+        object_segmaps = torch.stack(object_segmaps).float()
+        t1 = time.time()
+        print(f"Padding and stacking object pixel values took {t1 - t0:.4f} seconds")
+
+        total_time = time.time() - start_time
+        print(f"Total preprocessing time for image {image_id}: {total_time:.4f} seconds")
+
+        return {
+            "clip_image": clip_image,
+            "drop_image_embed": drop_image_embed,
+            "pixel_values": pixel_values,
+            "input_ids": input_ids,
+            "image_token_mask": image_token_mask,
+            "image_token_idx": image_token_idx,
+            "image_token_idx_mask": image_token_idx_mask,
+            "object_pixel_values": object_pixel_values,
+            "object_segmaps": object_segmaps,
+            "num_objects": torch.tensor(num_objects),
+            "image_ids": torch.tensor(image_id),
+        }
+
+    @torch.no_grad()
+    def backup_preprocess(self, image, info_dict, segmap, image_id):
         """
             image: 输入的图像。
             info_dict: 包含图像元数据的字典, 包含 "caption" 和 "segments" 信息。
