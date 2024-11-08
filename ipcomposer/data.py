@@ -198,7 +198,7 @@ class IpComposerDataset(torch.utils.data.Dataset):
         self.object_types = object_types
         # ip_adapter
         self.clip_image_processor = CLIPImageProcessor()
-        self.MIN_BBOX_AREA = 30  # 设置最小 bbox 面积阈值
+        self.MIN_BBOX_AREA = 50  # 设置最小 bbox 面积阈值
 
         if split == "all":
             image_ids_path = os.path.join(root, "image_ids.txt")
@@ -448,6 +448,9 @@ class IpComposerDataset(torch.utils.data.Dataset):
         segmap_path = os.path.join(self.root, chunk, image_id + ".npy")
 
         image = read_image(image_path, mode=ImageReadMode.RGB)
+        
+        if image.shape[1] == 0 or image.shape[2] == 0:
+            print(f"Warning: Image at path {image_path} has a dimension of 0")
 
         with open(info_path, "r") as f:
             info_dict = json.load(f)
